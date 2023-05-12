@@ -25,14 +25,14 @@ def print_answers(results: dict, details: str = "all", max_text_len: Optional[in
     # Defines the fields to keep in the Answer for each detail level
     fields_to_keep_by_level = {"minimum": ["answer", "context"], "medium": ["answer", "context", "score"]}
 
-    if not "answers" in results.keys():
+    if "answers" not in results:
         raise ValueError(
             "The results object does not seem to come from a Reader: "
             f"it does not contain the 'answers' key, but only: {results.keys()}.  "
             "Try print_documents or print_questions."
         )
 
-    if "query" in results.keys():
+    if "query" in results:
         print(f"\nQuery: {results['query']}\nAnswers:")
 
     answers = results["answers"]
@@ -40,7 +40,7 @@ def print_answers(results: dict, details: str = "all", max_text_len: Optional[in
 
     # Filter the results by detail level
     filtered_answers = []
-    if details in fields_to_keep_by_level.keys():
+    if details in fields_to_keep_by_level:
         for ans in answers:
             filtered_ans = {
                 field: getattr(ans, field)
@@ -103,13 +103,13 @@ def print_questions(results: dict):
     """
     Utility to print the output of a question generating pipeline in a readable format.
     """
-    if "generated_questions" in results.keys():
+    if "generated_questions" in results:
         print("\nGenerated questions:")
         for result in results["generated_questions"]:
             for question in result["questions"]:
                 print(f" - {question}")
 
-    elif "results" in results.keys():
+    elif "results" in results:
         print("\nGenerated pairs:")
         for pair in results["results"]:
             print(f" - Q:{pair['query']}")
@@ -148,12 +148,12 @@ def export_answers_to_csv(agg_results: list, output_file):
     assert "query" in agg_results[0], f"Wrong format used for {agg_results[0]}"
     assert "answers" in agg_results[0], f"Wrong format used for {agg_results[0]}"
 
-    data = {}  # type: Dict[str, List[Any]]
-    data["query"] = []
-    data["prediction"] = []
-    data["prediction_rank"] = []
-    data["prediction_context"] = []
-
+    data = {
+        "query": [],
+        "prediction": [],
+        "prediction_rank": [],
+        "prediction_context": [],
+    }
     for res in agg_results:
         for i in range(len(res["answers"])):
             temp = res["answers"][i]

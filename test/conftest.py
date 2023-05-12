@@ -34,7 +34,7 @@ try:
     from haystack.document_stores.faiss import FAISSDocumentStore
     from haystack.document_stores.sql import SQLDocumentStore
 
-except (ImportError, ModuleNotFoundError) as ie:
+except ImportError as ie:
     from haystack.utils.import_utils import _optional_component_not_installed
 
     _optional_component_not_installed("test", "test", ie)
@@ -267,11 +267,11 @@ def xpdf_fixture():
         run([commands], shell=True)
 
         verify_installation = run(["pdftotext -v"], shell=True)
-        if verify_installation.returncode == 127:
-            raise Exception(
-                """pdftotext is not installed. It is part of xpdf or poppler-utils software suite.
+    if verify_installation.returncode == 127:
+        raise Exception(
+            """pdftotext is not installed. It is part of xpdf or poppler-utils software suite.
                  You can download for your OS from here: https://www.xpdfreader.com/download.html."""
-            )
+        )
 
 
 @pytest.fixture(scope="function")
@@ -472,15 +472,15 @@ def no_answer_reader(request):
 @pytest.fixture(scope="function")
 def prediction(reader, test_docs_xs):
     docs = [Document.from_dict(d) if isinstance(d, dict) else d for d in test_docs_xs]
-    prediction = reader.predict(query="Who lives in Berlin?", documents=docs, top_k=5)
-    return prediction
+    return reader.predict(query="Who lives in Berlin?", documents=docs, top_k=5)
 
 
 @pytest.fixture(scope="function")
 def no_answer_prediction(no_answer_reader, test_docs_xs):
     docs = [Document.from_dict(d) if isinstance(d, dict) else d for d in test_docs_xs]
-    prediction = no_answer_reader.predict(query="What is the meaning of life?", documents=docs, top_k=5)
-    return prediction
+    return no_answer_reader.predict(
+        query="What is the meaning of life?", documents=docs, top_k=5
+    )
 
 
 @pytest.fixture(params=["es_filter_only", "elasticsearch", "dpr", "embedding", "tfidf", "table_text_retriever"])
@@ -683,7 +683,7 @@ def get_document_store(
     elif document_store_type == "elasticsearch":
         # make sure we start from a fresh index
         client = Elasticsearch()
-        client.indices.delete(index=index + "*", ignore=[404])
+        client.indices.delete(index=f"{index}*", ignore=[404])
         document_store = ElasticsearchDocumentStore(
             index=index,
             return_embedding=True,
@@ -774,7 +774,7 @@ def adaptive_model_qa(num_processes):
 
 @pytest.fixture(scope="function")
 def bert_base_squad2(request):
-    model = QAInferencer.load(
+    return QAInferencer.load(
         "deepset/minilm-uncased-squad2",
         task_type="question_answering",
         batch_size=4,
@@ -782,7 +782,6 @@ def bert_base_squad2(request):
         multithreading_rust=False,
         use_fast=True,  # TODO parametrize this to test slow as well
     )
-    return model
 
 
 DOCS_WITH_EMBEDDINGS = [

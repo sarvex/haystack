@@ -50,7 +50,7 @@ def load_glove(
     if not glove_path.exists():  # download and extract glove if necessary
         logger.info("Provided glove file not found. Downloading it instead.")
         glove_path.parent.mkdir(parents=True, exist_ok=True)
-        zip_path = glove_path.parent / (glove_path.name + ".zip")
+        zip_path = glove_path.parent / f"{glove_path.name}.zip"
         request = requests.get("https://nlp.stanford.edu/data/glove.42B.300d.zip", allow_redirects=True)
         with zip_path.open("wb") as downloaded_file:
             downloaded_file.write(request.content)
@@ -127,7 +127,7 @@ def get_replacements(
     # doing batched forward pass
     with torch.no_grad():
         prediction_list = []
-        while len(inputs) != 0:
+        while inputs:
             batch_list, token_indices = tuple(zip(*inputs[:batch_size]))
             batch = torch.tensor(batch_list)
             batch = batch.to(device)
@@ -194,7 +194,7 @@ def augment(
         device=device,
     )
     new_texts = []
-    for i in range(multiplication_factor):
+    for _ in range(multiplication_factor):
         new_text = []
         for possible_words in replacements:
             if len(possible_words) == 1:

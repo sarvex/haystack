@@ -120,10 +120,7 @@ def get_anno_type(annotation):
     elif len(short_answers) == 1:
         return "short_answer"
     elif len(short_answers) == 0:
-        if long_answer["start_token"] == -1:
-            return "no_answer"
-        else:
-            return "long_answer"
+        return "no_answer" if long_answer["start_token"] == -1 else "long_answer"
 
 
 def reduce_annotations(anno_types, answers):
@@ -209,7 +206,7 @@ def nq_to_squad(record):
         answer = {"answer_start": len(before_answer), "text": answer}
         answers.append(answer)
 
-    if len(answers) == 0:
+    if not answers:
         global n_long_ans_only
         n_long_ans_only += 1
         return
@@ -279,7 +276,9 @@ def main():
                     nq_as_squad["data"].append(squad_record)
                 if records % 100 == 0:
                     logging.info("processed %s records", records)
-    print("Converted %s NQ records into %s SQuAD records." % (records, len(nq_as_squad["data"])))
+    print(
+        f'Converted {records} NQ records into {len(nq_as_squad["data"])} SQuAD records.'
+    )
     print(
         f"Removed samples: yes/no: {n_yn} multi_short: {n_ms} non_para {n_non_p} long_ans_only: {n_long_ans_only} errors: {n_error}"
     )

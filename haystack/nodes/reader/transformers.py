@@ -176,9 +176,7 @@ class TransformersReader(BaseReader):
         answers = sorted(answers, reverse=True)
         answers = answers[:top_k]
 
-        results = {"query": query, "answers": answers}
-
-        return results
+        return {"query": query, "answers": answers}
 
     def predict_batch(self, query_doc_list: List[dict], top_k: Optional[int] = None, batch_size: Optional[int] = None):
 

@@ -8,7 +8,7 @@ try:
     import pytesseract
     from PIL.PpmImagePlugin import PpmImageFile
     from PIL import Image
-except (ImportError, ModuleNotFoundError) as ie:
+except ImportError as ie:
     from haystack.utils.import_utils import _optional_component_not_installed
 
     _optional_component_not_installed(__name__, "ocr", ie)
@@ -118,10 +118,14 @@ class ImageToTextConverter(BaseConverter):
                 digits = [word for word in words if any(i.isdigit() for i in word)]
 
                 # remove lines having > 40% of words as digits AND not ending with a period(.)
-                if remove_numeric_tables:
-                    if words and len(digits) / len(words) > 0.4 and not line.strip().endswith("."):
-                        logger.debug(f"Removing line '{line}' from file")
-                        continue
+                if (
+                    remove_numeric_tables
+                    and words
+                    and len(digits) / len(words) > 0.4
+                    and not line.strip().endswith(".")
+                ):
+                    logger.debug(f"Removing line '{line}' from file")
+                    continue
                 cleaned_lines.append(line)
 
             page = "\n".join(cleaned_lines)
@@ -145,5 +149,4 @@ class ImageToTextConverter(BaseConverter):
 
         :param image: input image file
         """
-        text = [pytesseract.image_to_string(image, lang=self.tesseract_langs)]
-        return text
+        return [pytesseract.image_to_string(image, lang=self.tesseract_langs)]

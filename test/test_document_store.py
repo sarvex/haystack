@@ -351,7 +351,7 @@ def test_get_document_by_id(document_store_with_docs):
 def test_get_documents_by_id(document_store):
     # generate more documents than the elasticsearch default query size limit of 10
     docs_to_generate = 15
-    documents = [{"content": "doc-" + str(i)} for i in range(docs_to_generate)]
+    documents = [{"content": f"doc-{str(i)}"} for i in range(docs_to_generate)]
     doc_idx = "green_fields"
     document_store.write_documents(documents, index=doc_idx)
 
@@ -473,9 +473,10 @@ def test_document_with_embeddings(document_store):
 
 @pytest.mark.parametrize("retriever", ["embedding"], indirect=True)
 def test_update_embeddings(document_store, retriever):
-    documents = []
-    for i in range(6):
-        documents.append({"content": f"text_{i}", "id": str(i), "meta_field": f"value_{i}"})
+    documents = [
+        {"content": f"text_{i}", "id": str(i), "meta_field": f"value_{i}"}
+        for i in range(6)
+    ]
     documents.append({"content": "text_0", "id": "6", "meta_field": "value_0"})
 
     document_store.write_documents(documents, index="haystack_test_one")
@@ -517,9 +518,10 @@ def test_update_embeddings(document_store, retriever):
     }
     document_store.write_documents([doc], index="haystack_test_one")
 
-    documents = []
-    for i in range(8, 11):
-        documents.append({"content": f"text_{i}", "id": str(i), "meta_field": f"value_{i}"})
+    documents = [
+        {"content": f"text_{i}", "id": str(i), "meta_field": f"value_{i}"}
+        for i in range(8, 11)
+    ]
     document_store.write_documents(documents, index="haystack_test_one")
 
     doc_before_update = document_store.get_all_documents(
@@ -568,10 +570,10 @@ def test_update_embeddings(document_store, retriever):
         AssertionError, np.testing.assert_array_equal, embedding_before_update, embedding_after_update
     )
 
-    # test update embeddings for newly added docs
-    documents = []
-    for i in range(12, 15):
-        documents.append({"content": f"text_{i}", "id": str(i), "meta_field": f"value_{i}"})
+    documents = [
+        {"content": f"text_{i}", "id": str(i), "meta_field": f"value_{i}"}
+        for i in range(12, 15)
+    ]
     document_store.write_documents(documents, index="haystack_test_one")
 
     if not isinstance(document_store, WeaviateDocumentStore):
@@ -587,27 +589,43 @@ def test_update_embeddings(document_store, retriever):
 def test_update_embeddings_table_text_retriever(document_store, retriever):
     documents = []
     for i in range(3):
-        documents.append(
-            {"content": f"text_{i}", "id": f"pssg_{i}", "meta_field": f"value_text_{i}", "content_type": "text"}
+        documents.extend(
+            (
+                {
+                    "content": f"text_{i}",
+                    "id": f"pssg_{i}",
+                    "meta_field": f"value_text_{i}",
+                    "content_type": "text",
+                },
+                {
+                    "content": pd.DataFrame(
+                        columns=[f"col_{i}", f"col_{i+1}"],
+                        data=[[f"cell_{i}", f"cell_{i+1}"]],
+                    ),
+                    "id": f"table_{i}",
+                    "meta_field": f"value_table_{i}",
+                    "content_type": "table",
+                },
+            )
         )
-        documents.append(
+    documents.extend(
+        (
             {
-                "content": pd.DataFrame(columns=[f"col_{i}", f"col_{i+1}"], data=[[f"cell_{i}", f"cell_{i+1}"]]),
-                "id": f"table_{i}",
-                f"meta_field": f"value_table_{i}",
+                "content": "text_0",
+                "id": "pssg_4",
+                "meta_field": "value_text_0",
+                "content_type": "text",
+            },
+            {
+                "content": pd.DataFrame(
+                    columns=["col_0", "col_1"], data=[["cell_0", "cell_1"]]
+                ),
+                "id": "table_4",
+                "meta_field": "value_table_0",
                 "content_type": "table",
-            }
+            },
         )
-    documents.append({"content": "text_0", "id": "pssg_4", "meta_field": "value_text_0", "content_type": "text"})
-    documents.append(
-        {
-            "content": pd.DataFrame(columns=["col_0", "col_1"], data=[["cell_0", "cell_1"]]),
-            "id": "table_4",
-            "meta_field": "value_table_0",
-            "content_type": "table",
-        }
     )
-
     document_store.write_documents(documents, index="haystack_test_one")
     document_store.update_embeddings(retriever, index="haystack_test_one", batch_size=3)
     documents = document_store.get_all_documents(index="haystack_test_one", return_embedding=True)
@@ -917,8 +935,8 @@ def test_multilabel(document_store):
         index="haystack_test_multilabel", open_domain=False, drop_negative_labels=True
     )
     assert len(multi_labels) == 3
-    label_counts = set([len(ml.labels) for ml in multi_labels])
-    assert label_counts == set([2, 1, 1])
+    label_counts = {len(ml.labels) for ml in multi_labels}
+    assert label_counts == {2, 1}
 
     assert len(multi_labels[0].answers) == len(multi_labels[0].document_ids)
 
@@ -1075,8 +1093,8 @@ def test_multilabel_filter_aggregations(document_store):
 
     # for open-domain we group all together as long as they have the same question and filters
     assert len(multi_labels_open) == 3
-    label_counts = set([len(ml.labels) for ml in multi_labels_open])
-    assert label_counts == set([2, 1, 1])
+    label_counts = {len(ml.labels) for ml in multi_labels_open}
+    assert label_counts == {2, 1}
     # all labels are in there except the negative one and the no_answer
     assert "5-negative" not in [l.id for multi_label in multi_labels_open for l in multi_label.labels]
 
@@ -1087,8 +1105,8 @@ def test_multilabel_filter_aggregations(document_store):
         index="haystack_test_multilabel", open_domain=False, drop_negative_labels=True
     )
     assert len(multi_labels) == 3
-    label_counts = set([len(ml.labels) for ml in multi_labels])
-    assert label_counts == set([2, 1, 1])
+    label_counts = {len(ml.labels) for ml in multi_labels}
+    assert label_counts == {2, 1}
 
     assert len(multi_labels[0].answers) == len(multi_labels[0].document_ids)
 
@@ -1177,8 +1195,8 @@ def test_multilabel_meta_aggregations(document_store):
         index="haystack_test_multilabel", open_domain=True, drop_negative_labels=True, aggregate_by_meta="file_id"
     )
     assert len(multi_labels) == 4
-    label_counts = set([len(ml.labels) for ml in multi_labels])
-    assert label_counts == set([2, 1, 1, 1])
+    label_counts = {len(ml.labels) for ml in multi_labels}
+    assert label_counts == {2, 1}
     for multi_label in multi_labels:
         for l in multi_label.labels:
             assert l.filters == l.meta
@@ -1742,8 +1760,8 @@ def test_elasticsearch_brownfield_support(document_store_with_docs):
     assert all("meta_field" not in doc.meta for doc in transferred_documents)
     assert all("numeric_field" not in doc.meta for doc in transferred_documents)
 
-    original_content = set([doc.content for doc in original_documents])
-    transferred_content = set([doc.content for doc in transferred_documents])
+    original_content = {doc.content for doc in original_documents}
+    transferred_content = {doc.content for doc in transferred_documents}
     assert original_content == transferred_content
 
     # Test transferring docs with PreProcessor

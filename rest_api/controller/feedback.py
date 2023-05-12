@@ -37,8 +37,7 @@ def get_feedback():
     This endpoint allows the API user to retrieve all the feedback that has been submitted
     through the `POST /feedback` endpoint.
     """
-    labels = DOCUMENT_STORE.get_all_labels()
-    return labels
+    return DOCUMENT_STORE.get_all_labels()
 
 
 @router.delete("/feedback")
@@ -76,17 +75,19 @@ def get_feedback_metrics(filters: FilterRequest = None):
     labels = DOCUMENT_STORE.get_all_labels(filters=filters_content)
 
     res: Dict[str, Optional[Union[float, int]]]
-    if len(labels) > 0:
-        answer_feedback = [1 if l.is_correct_answer else 0 for l in labels]
-        doc_feedback = [1 if l.is_correct_document else 0 for l in labels]
+    if len(labels) <= 0:
+        return {"answer_accuracy": None, "document_accuracy": None, "n_feedback": 0}
+    answer_feedback = [1 if l.is_correct_answer else 0 for l in labels]
+    doc_feedback = [1 if l.is_correct_document else 0 for l in labels]
 
-        answer_accuracy = sum(answer_feedback) / len(answer_feedback)
-        doc_accuracy = sum(doc_feedback) / len(doc_feedback)
+    answer_accuracy = sum(answer_feedback) / len(answer_feedback)
+    doc_accuracy = sum(doc_feedback) / len(doc_feedback)
 
-        res = {"answer_accuracy": answer_accuracy, "document_accuracy": doc_accuracy, "n_feedback": len(labels)}
-    else:
-        res = {"answer_accuracy": None, "document_accuracy": None, "n_feedback": 0}
-    return res
+    return {
+        "answer_accuracy": answer_accuracy,
+        "document_accuracy": doc_accuracy,
+        "n_feedback": len(labels),
+    }
 
 
 @router.get("/export-feedback")
@@ -105,7 +106,12 @@ def export_feedback(
         labels = DOCUMENT_STORE.get_all_labels(filters={"origin": ["user-feedback"]})
         # Filter out the labels where the passage is correct but answer is wrong (in SQuAD this matches
         # neither a "positive example" nor a negative "is_impossible" one)
-        labels = [l for l in labels if not (l.is_correct_document is True and l.is_correct_answer is False)]
+        labels = [
+            l
+            for l in labels
+            if l.is_correct_document is not True
+            or l.is_correct_answer is not False
+        ]
 
     export_data = []
 
@@ -166,7 +172,7 @@ def export_feedback(
             start = squad_label["paragraphs"][0]["qas"][0]["answers"][0]["answer_start"]
             answer = squad_label["paragraphs"][0]["qas"][0]["answers"][0]["text"]
             context = squad_label["paragraphs"][0]["context"]
-            if not context[start : start + len(answer)] == answer:
+            if context[start : start + len(answer)] != answer:
                 logger.error(
                     f"Skipping invalid squad label as string via offsets "
                     f"('{context[start:start + len(answer)]}') does not match answer string ('{answer}') "

@@ -28,7 +28,7 @@ class TikaXHTMLParser(HTMLParser):
 
     def handle_endtag(self, tag):
         # close page div, or a single page without page div, save page and open a new page
-        if (tag == "div" or tag == "body") and self.ingest:
+        if tag in ["div", "body"] and self.ingest:
             self.ingest = False
             # restore words hyphened to the next line
             self.pages.append(self.page.replace("-\n", ""))
@@ -120,10 +120,14 @@ class TikaConverter(BaseConverter):
                 digits = [word for word in words if any(i.isdigit() for i in word)]
 
                 # remove lines having > 40% of words as digits AND not ending with a period(.)
-                if remove_numeric_tables:
-                    if words and len(digits) / len(words) > 0.4 and not line.strip().endswith("."):
-                        logger.debug(f"Removing line '{line}' from {file_path}")
-                        continue
+                if (
+                    remove_numeric_tables
+                    and words
+                    and len(digits) / len(words) > 0.4
+                    and not line.strip().endswith(".")
+                ):
+                    logger.debug(f"Removing line '{line}' from {file_path}")
+                    continue
 
                 cleaned_lines.append(line)
 

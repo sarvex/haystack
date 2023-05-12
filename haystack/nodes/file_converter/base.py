@@ -102,13 +102,15 @@ class BaseConverter(BaseComponent):
 
         documents: list = []
         for file_path, file_meta in zip(file_paths, meta):
-            for doc in self.convert(
-                file_path=file_path,
-                meta=file_meta,
-                remove_numeric_tables=remove_numeric_tables,
-                valid_languages=valid_languages,
-            ):
-                documents.append(doc)
-
+            documents.extend(
+                iter(
+                    self.convert(
+                        file_path=file_path,
+                        meta=file_meta,
+                        remove_numeric_tables=remove_numeric_tables,
+                        valid_languages=valid_languages,
+                    )
+                )
+            )
         result = {"documents": documents}
         return result, "output_1"

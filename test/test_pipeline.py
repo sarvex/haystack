@@ -748,6 +748,7 @@ def test_parallel_paths_in_pipeline_graph():
 
 
 def test_parallel_paths_in_pipeline_graph_with_branching():
+
     class AWithOutput1(RootNode):
         outgoing_edges = 2
 
@@ -789,13 +790,14 @@ def test_parallel_paths_in_pipeline_graph_with_branching():
             output += "E"
             return {"output": output}, "output_1"
 
+
+
     class JoinNode(RootNode):
         def run(self, output=None, inputs=None):
             if inputs:
-                output = ""
-                for input_dict in inputs:
-                    output += input_dict["output"]
+                output = "".join(input_dict["output"] for input_dict in inputs)
             return {"output": output}, "output_1"
+
 
     pipeline = Pipeline()
     pipeline.add_node(name="A", component=AWithOutput1(), inputs=["Query"])
@@ -901,6 +903,7 @@ def test_pipeline_get_document_store_from_retriever():
 
 
 def test_pipeline_get_document_store_from_dual_retriever():
+
     class DummyRetriever(BaseRetriever):
         def __init__(self, document_store):
             self.document_store = document_store
@@ -912,13 +915,14 @@ def test_pipeline_get_document_store_from_dual_retriever():
     class DummyDocumentStore(BaseDocumentStore):
         pass
 
+
+
     class JoinNode(RootNode):
         def run(self, output=None, inputs=None):
             if inputs:
-                output = ""
-                for input_dict in inputs:
-                    output += input_dict["output"]
+                output = "".join(input_dict["output"] for input_dict in inputs)
             return {"output": output}, "output_1"
+
 
     doc_store = DummyDocumentStore()
     retriever_a = DummyRetriever(document_store=doc_store)
@@ -932,6 +936,7 @@ def test_pipeline_get_document_store_from_dual_retriever():
 
 
 def test_pipeline_get_document_store_multiple_doc_stores_from_dual_retriever():
+
     class DummyRetriever(BaseRetriever):
         def __init__(self, document_store):
             self.document_store = document_store
@@ -943,13 +948,14 @@ def test_pipeline_get_document_store_multiple_doc_stores_from_dual_retriever():
     class DummyDocumentStore(BaseDocumentStore):
         pass
 
+
+
     class JoinNode(RootNode):
         def run(self, output=None, inputs=None):
             if inputs:
-                output = ""
-                for input_dict in inputs:
-                    output += input_dict["output"]
+                output = "".join(input_dict["output"] for input_dict in inputs)
             return {"output": output}, "output_1"
+
 
     doc_store_a = DummyDocumentStore()
     doc_store_b = DummyDocumentStore()

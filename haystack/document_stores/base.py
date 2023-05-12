@@ -297,8 +297,7 @@ class BaseDocumentStore(BaseComponent):
 
             for meta_key in aggregate_by_meta:
                 meta = l.meta or {}
-                curr_meta = meta.get(meta_key, None)
-                if curr_meta:
+                if curr_meta := meta.get(meta_key, None):
                     curr_meta = curr_meta if isinstance(curr_meta, list) else [curr_meta]
                     meta_str = f"{meta_key}={''.join(curr_meta)}"
                     group_keys.append(meta_str)
@@ -316,14 +315,14 @@ class BaseDocumentStore(BaseComponent):
             else:
                 grouped_labels[group_key] = [l]
 
-        # Package labels that we grouped together in a MultiLabel object that allows simpler access to some
-        # aggregated attributes like `no_answer`
-        aggregated_labels = [
-            MultiLabel(labels=ls, drop_negative_labels=drop_negative_labels, drop_no_answers=drop_no_answers)
+        return [
+            MultiLabel(
+                labels=ls,
+                drop_negative_labels=drop_negative_labels,
+                drop_no_answers=drop_no_answers,
+            )
             for ls in grouped_labels.values()
         ]
-
-        return aggregated_labels
 
     @abstractmethod
     def get_document_by_id(
@@ -462,7 +461,7 @@ class BaseDocumentStore(BaseComponent):
                 self.write_documents(docs, index=doc_index, headers=headers)
                 self.write_labels(labels, index=label_index, headers=headers)
             else:
-                jsonl_filename = (file_path.parent / (file_path.stem + ".jsonl")).as_posix()
+                jsonl_filename = (file_path.parent / f"{file_path.stem}.jsonl").as_posix()
                 logger.info(
                     f"Adding evaluation data batch-wise is not compatible with json-formatted SQuAD files. "
                     f"Converting json to jsonl to: {jsonl_filename}"
@@ -595,7 +594,7 @@ class BaseDocumentStore(BaseComponent):
             documents_found = self.get_documents_by_id(ids=[doc.id for doc in documents], index=index, headers=headers)
             ids_exist_in_db: List[str] = [doc.id for doc in documents_found]
 
-            if len(ids_exist_in_db) > 0 and duplicate_documents == "fail":
+            if ids_exist_in_db and duplicate_documents == "fail":
                 raise DuplicateDocumentError(
                     f"Document with ids '{', '.join(ids_exist_in_db)} already exists" f" in index = '{index}'."
                 )
@@ -616,12 +615,11 @@ class BaseDocumentStore(BaseComponent):
         """
         index = index or self.label_index
         new_ids: List[str] = [label.id for label in labels]
-        duplicate_ids: List[str] = []
-
-        for label_id, count in collections.Counter(new_ids).items():
-            if count > 1:
-                duplicate_ids.append(label_id)
-
+        duplicate_ids: List[str] = [
+            label_id
+            for label_id, count in collections.Counter(new_ids).items()
+            if count > 1
+        ]
         for label in self.get_all_labels(index=index, headers=headers):
             if label.id in new_ids:
                 duplicate_ids.append(label.id)
@@ -725,7 +723,5 @@ def get_batches_from_generator(iterable, n):
     Batch elements of an iterable into fixed-length chunks or blocks.
     """
     it = iter(iterable)
-    x = tuple(islice(it, n))
-    while x:
+    while x := tuple(islice(it, n)):
         yield x
-        x = tuple(islice(it, n))

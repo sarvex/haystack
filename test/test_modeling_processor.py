@@ -48,7 +48,41 @@ def test_dataset_from_dicts_qa_inference(caplog=None):
             assert baskets[0].id_internal == "1-0", f"Processing for {model} has changed."
 
             # roberta
-            if model == "deepset/roberta-base-squad2":
+            if model == "deepset/bert-base-cased-squad2":
+                assert (
+                    len(baskets[0].samples[0].tokenized["passage_tokens"]) == 5
+                ), f"Processing for {model} has changed."
+                assert (
+                    len(baskets[0].samples[0].tokenized["question_tokens"]) == 7
+                ), f"Processing for {model} has changed."
+                if sample_type == "noanswer":
+                    assert baskets[0].samples[0].features[0]["input_ids"][:10] == [
+                        101,
+                        1731,
+                        1242,
+                        1234,
+                        1686,
+                        1107,
+                        2123,
+                        136,
+                        102,
+                        3206,
+                    ], f"Processing for {model} and {sample_type}-testsample has changed."
+                else:
+                    assert baskets[0].samples[0].features[0]["input_ids"][:10] == [
+                        101,
+                        1731,
+                        1242,
+                        1234,
+                        1686,
+                        1107,
+                        3206,
+                        136,
+                        102,
+                        3206,
+                    ], f"Processing for {model} and {sample_type}-testsample has changed."
+
+            elif model == "deepset/roberta-base-squad2":
                 assert (
                     len(baskets[0].samples[0].tokenized["passage_tokens"]) == 6
                 ), f"Processing for {model} has changed."
@@ -88,43 +122,7 @@ def test_dataset_from_dicts_qa_inference(caplog=None):
                         34,
                     ], f"Processing for {model} and {sample_type}-testsample has changed."
 
-            # bert
-            if model == "deepset/bert-base-cased-squad2":
-                assert (
-                    len(baskets[0].samples[0].tokenized["passage_tokens"]) == 5
-                ), f"Processing for {model} has changed."
-                assert (
-                    len(baskets[0].samples[0].tokenized["question_tokens"]) == 7
-                ), f"Processing for {model} has changed."
-                if sample_type == "noanswer":
-                    assert baskets[0].samples[0].features[0]["input_ids"][:10] == [
-                        101,
-                        1731,
-                        1242,
-                        1234,
-                        1686,
-                        1107,
-                        2123,
-                        136,
-                        102,
-                        3206,
-                    ], f"Processing for {model} and {sample_type}-testsample has changed."
-                else:
-                    assert baskets[0].samples[0].features[0]["input_ids"][:10] == [
-                        101,
-                        1731,
-                        1242,
-                        1234,
-                        1686,
-                        1107,
-                        3206,
-                        136,
-                        102,
-                        3206,
-                    ], f"Processing for {model} and {sample_type}-testsample has changed."
-
-            # xlm-roberta
-            if model == "deepset/xlm-roberta-large-squad2":
+            elif model == "deepset/xlm-roberta-large-squad2":
                 assert (
                     len(baskets[0].samples[0].tokenized["passage_tokens"]) == 7
                 ), f"Processing for {model} has changed."
@@ -163,7 +161,10 @@ def test_dataset_from_dicts_qa_inference(caplog=None):
                     ], f"Processing for {model} and {sample_type}-testsample has changed."
 
             # minilm and electra have same vocab + tokenizer
-            if model == "deepset/minilm-uncased-squad2" or model == "deepset/electra-base-squad2":
+            if model in [
+                "deepset/minilm-uncased-squad2",
+                "deepset/electra-base-squad2",
+            ]:
                 assert (
                     len(baskets[0].samples[0].tokenized["passage_tokens"]) == 5
                 ), f"Processing for {model} has changed."
@@ -260,7 +261,7 @@ def test_dataset_from_dicts_qa_labelconversion(caplog=None):
                 dicts, indices=[1], return_baskets=False
             )
 
-            if sample_type == "answer-wrong" or sample_type == "answer-offset-wrong":
+            if sample_type in ["answer-wrong", "answer-offset-wrong"]:
                 assert len(problematic_sample_ids) == 1, f"Processing labels for {model} has changed."
 
             if sample_type == "noanswer":
@@ -285,11 +286,11 @@ def test_dataset_from_dicts_qa_labelconversion(caplog=None):
                         14,
                     ], f"Processing labels for {model} has changed."
                 # bert, minilm, electra
-                if (
-                    model == "deepset/bert-base-cased-squad2"
-                    or model == "deepset/minilm-uncased-squad2"
-                    or model == "deepset/electra-base-squad2"
-                ):
+                if model in [
+                    "deepset/bert-base-cased-squad2",
+                    "deepset/minilm-uncased-squad2",
+                    "deepset/electra-base-squad2",
+                ]:
                     assert list(dataset.tensors[tensor_names.index("labels")].numpy()[0, 0, :]) == [
                         11,
                         11,

@@ -15,7 +15,7 @@ try:
     from elasticsearch import Elasticsearch, RequestsHttpConnection, Connection, Urllib3HttpConnection
     from elasticsearch.helpers import bulk, scan
     from elasticsearch.exceptions import RequestError
-except (ImportError, ModuleNotFoundError) as ie:
+except ImportError as ie:
     from haystack.utils.import_utils import _optional_component_not_installed
 
     _optional_component_not_installed(__name__, "elasticsearch", ie)
@@ -219,7 +219,7 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
             raise Exception(
                 f"Invalid value {similarity} for similarity in ElasticSearchDocumentStore constructor. Choose between 'cosine', 'l2' and 'dot_product'"
             )
-        if index_type in ["flat", "hnsw"]:
+        if index_type in {"flat", "hnsw"}:
             self.index_type = index_type
         else:
             raise Exception("Invalid value for index_type in constructor. Choose between 'flat' and 'hnsw'")
@@ -314,7 +314,7 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
         try:
             # ping uses a HEAD request on the root URI. In some cases, the user might not have permissions for that,
             # resulting in a HTTP Forbidden 403 response.
-            if username in ["", "elastic"]:
+            if username in {"", "elastic"}:
                 status = client.ping()
                 if not status:
                     raise ConnectionError(
@@ -332,7 +332,7 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
         # Create list of host(s) + port(s) to allow direct client connections to multiple elasticsearch nodes
         if isinstance(host, list):
             if isinstance(port, list):
-                if not len(port) == len(host):
+                if len(port) != len(host):
                     raise ValueError("Length of list `host` must match length of list `port`")
                 hosts = [{"host": h, "port": p} for h, p in zip(host, port)]
             else:
@@ -467,8 +467,9 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
     ) -> Optional[Document]:
         """Fetch a document by specifying its text id string"""
         index = index or self.index
-        documents = self.get_documents_by_id([id], index=index, headers=headers)
-        if documents:
+        if documents := self.get_documents_by_id(
+            [id], index=index, headers=headers
+        ):
             return documents[0]
         else:
             return None
@@ -487,8 +488,12 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
         index = index or self.index
         query = {"size": len(ids), "query": {"ids": {"values": ids}}}
         result = self.client.search(index=index, body=query, headers=headers)["hits"]["hits"]
-        documents = [self._convert_es_hit_to_document(hit, return_embedding=self.return_embedding) for hit in result]
-        return documents
+        return [
+            self._convert_es_hit_to_document(
+                hit, return_embedding=self.return_embedding
+            )
+            for hit in result
+        ]
 
     def get_metadata_values_by_key(
         self,
@@ -623,9 +628,11 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
             }  # type: Dict[str, Any]
 
             # cast embedding type as ES cannot deal with np.array
-            if _doc[self.embedding_field] is not None:
-                if type(_doc[self.embedding_field]) == np.ndarray:
-                    _doc[self.embedding_field] = _doc[self.embedding_field].tolist()
+            if (
+                _doc[self.embedding_field] is not None
+                and type(_doc[self.embedding_field]) == np.ndarray
+            ):
+                _doc[self.embedding_field] = _doc[self.embedding_field].tolist()
 
             # rename id for elastic
             _doc["_id"] = str(_doc.pop("id"))
@@ -636,7 +643,7 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
 
             # In order to have a flat structure in elastic + similar behaviour to the other DocumentStores,
             # we "unnest" all value within "meta"
-            if "meta" in _doc.keys():
+            if "meta" in _doc:
                 for k, v in _doc["meta"].items():
                     _doc[k] = v
                 _doc.pop("meta")
@@ -671,7 +678,7 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
 
         label_list: List[Label] = [Label.from_dict(label) if isinstance(label, dict) else label for label in labels]
         duplicate_ids: list = [label.id for label in self._get_duplicate_labels(label_list, index=index)]
-        if len(duplicate_ids) > 0:
+        if duplicate_ids:
             logger.warning(
                 f"Duplicate Label IDs: Inserting a Label whose id already exists in this document store."
                 f" This will overwrite the old Label. Please make sure Label.id is a unique identifier of"
@@ -815,8 +822,7 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
         result = self.get_all_documents_generator(
             index=index, filters=filters, return_embedding=return_embedding, batch_size=batch_size, headers=headers
         )
-        documents = list(result)
-        return documents
+        return list(result)
 
     def get_all_documents_generator(
         self,
@@ -872,8 +878,7 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
 
         result = self._get_all_documents_in_index(index=index, filters=filters, batch_size=batch_size, headers=headers)
         for hit in result:
-            document = self._convert_es_hit_to_document(hit, return_embedding=return_embedding)
-            yield document
+            yield self._convert_es_hit_to_document(hit, return_embedding=return_embedding)
 
     def get_all_labels(
         self,
@@ -889,8 +894,9 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
         result = list(
             self._get_all_documents_in_index(index=index, filters=filters, batch_size=batch_size, headers=headers)
         )
-        labels = [Label.from_dict({**hit["_source"], "id": hit["_id"]}) for hit in result]
-        return labels
+        return [
+            Label.from_dict({**hit["_source"], "id": hit["_id"]}) for hit in result
+        ]
 
     def _get_all_documents_in_index(
         self,
@@ -911,8 +917,14 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
         if only_documents_without_embedding:
             body["query"]["bool"]["must_not"] = [{"exists": {"field": self.embedding_field}}]
 
-        result = scan(self.client, query=body, index=index, size=batch_size, scroll=self.scroll, headers=headers)
-        yield from result
+        yield from scan(
+            self.client,
+            query=body,
+            index=index,
+            size=batch_size,
+            scroll=self.scroll,
+            headers=headers,
+        )
 
     def query(
         self,
@@ -1115,8 +1127,12 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
         logger.debug(f"Retriever query: {body}")
         result = self.client.search(index=index, body=body, headers=headers)["hits"]["hits"]
 
-        documents = [self._convert_es_hit_to_document(hit, return_embedding=self.return_embedding) for hit in result]
-        return documents
+        return [
+            self._convert_es_hit_to_document(
+                hit, return_embedding=self.return_embedding
+            )
+            for hit in result
+        ]
 
     def query_by_embedding(
         self,
@@ -1252,11 +1268,14 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
                 raise RequestError(e.status_code, error_message, e.info)
             raise e
 
-        documents = [
-            self._convert_es_hit_to_document(hit, adapt_score_for_embedding=True, return_embedding=return_embedding)
+        return [
+            self._convert_es_hit_to_document(
+                hit,
+                adapt_score_for_embedding=True,
+                return_embedding=return_embedding,
+            )
             for hit in result
         ]
-        return documents
 
     def _get_vector_similarity_query(self, query_emb: np.ndarray, top_k: int):
         """
@@ -1278,7 +1297,7 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
         if self.skip_missing_embeddings:
             script_score_query = {"bool": {"filter": {"bool": {"must": [{"exists": {"field": self.embedding_field}}]}}}}
 
-        query = {
+        return {
             "script_score": {
                 "query": script_score_query,
                 "script": {
@@ -1288,7 +1307,6 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
                 },
             }
         }
-        return query
 
     def _convert_es_hit_to_document(
         self,
@@ -1302,8 +1320,7 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
             for k, v in hit["_source"].items()
             if k not in (self.content_field, "content_type", self.embedding_field)
         }
-        name = meta_data.pop(self.name_field, None)
-        if name:
+        if name := meta_data.pop(self.name_field, None):
             meta_data["name"] = name
 
         if "highlight" in hit:
@@ -1313,17 +1330,17 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
         if score:
             if adapt_score_for_embedding:
                 score = self._scale_embedding_score(score)
-                if self.similarity == "cosine":
-                    score = (score + 1) / 2  # scaling probability from cosine similarity
-                else:
-                    score = float(expit(np.asarray(score / 100)))  # scaling probability from dot product and l2
+                score = (
+                    (score + 1) / 2
+                    if self.similarity == "cosine"
+                    else float(expit(np.asarray(score / 100)))
+                )
             else:
                 score = float(expit(np.asarray(score / 8)))  # scaling probability from TFIDF/BM25
 
         embedding = None
         if return_embedding:
-            embedding_list = hit["_source"].get(self.embedding_field)
-            if embedding_list:
+            if embedding_list := hit["_source"].get(self.embedding_field):
                 embedding = np.asarray(embedding_list, dtype=np.float32)
 
         doc_dict = {
@@ -1334,9 +1351,7 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
             "score": score,
             "embedding": embedding,
         }
-        document = Document.from_dict(doc_dict)
-
-        return document
+        return Document.from_dict(doc_dict)
 
     def _scale_embedding_score(self, score):
         return score - 1000
@@ -1350,14 +1365,13 @@ class ElasticsearchDocumentStore(KeywordDocumentStore):
         docs = self.get_all_documents(index)
 
         l = [len(d.content) for d in docs]
-        stats = {
+        return {
             "count": len(docs),
             "chars_mean": np.mean(l),
             "chars_max": max(l),
             "chars_min": min(l),
             "chars_median": np.median(l),
         }
-        return stats
 
     def update_embeddings(
         self,
@@ -1824,11 +1838,14 @@ class OpenSearchDocumentStore(ElasticsearchDocumentStore):
         logger.debug(f"Retriever query: {body}")
         result = self.client.search(index=index, body=body, request_timeout=300, headers=headers)["hits"]["hits"]
 
-        documents = [
-            self._convert_es_hit_to_document(hit, adapt_score_for_embedding=True, return_embedding=return_embedding)
+        return [
+            self._convert_es_hit_to_document(
+                hit,
+                adapt_score_for_embedding=True,
+                return_embedding=return_embedding,
+            )
             for hit in result
         ]
-        return documents
 
     def _create_document_index(self, index_name: str, headers: Optional[Dict[str, str]] = None):
         """
@@ -1871,16 +1888,10 @@ class OpenSearchDocumentStore(ElasticsearchDocumentStore):
                 # embedding field with global space_type setting
                 if "method" not in mappings["properties"][self.embedding_field]:
                     embedding_field_space_type = index_settings["knn.space_type"]
-                # embedding field with local space_type setting
                 else:
-                    # embedding field with global space_type setting
-                    if "method" not in mappings["properties"][self.embedding_field]:
-                        embedding_field_space_type = index_settings["knn.space_type"]
-                    # embedding field with local space_type setting
-                    else:
-                        embedding_field_space_type = mappings["properties"][self.embedding_field]["method"][
-                            "space_type"
-                        ]
+                    embedding_field_space_type = mappings["properties"][self.embedding_field]["method"][
+                        "space_type"
+                    ]
 
                     embedding_field_similarity = self.space_type_to_similarity[embedding_field_space_type]
                     if embedding_field_similarity == self.similarity:
@@ -1973,8 +1984,11 @@ class OpenSearchDocumentStore(ElasticsearchDocumentStore):
         else:
             logger.error("Please set index_type to either 'flat' or 'hnsw'")
 
-        embeddings_field_mapping = {"type": "knn_vector", "dimension": self.embedding_dim, "method": method}
-        return embeddings_field_mapping
+        return {
+            "type": "knn_vector",
+            "dimension": self.embedding_dim,
+            "method": method,
+        }
 
     def _create_label_index(self, index_name: str, headers: Optional[Dict[str, str]] = None):
         if self.client.indices.exists(index=index_name, headers=headers):
@@ -2013,13 +2027,23 @@ class OpenSearchDocumentStore(ElasticsearchDocumentStore):
         """
         Generate Elasticsearch query for vector similarity.
         """
-        if self.embeddings_field_supports_similarity:
-            query: dict = {
-                "bool": {"must": [{"knn": {self.embedding_field: {"vector": query_emb.tolist(), "k": top_k}}}]}
+        return (
+            {
+                "bool": {
+                    "must": [
+                        {
+                            "knn": {
+                                self.embedding_field: {
+                                    "vector": query_emb.tolist(),
+                                    "k": top_k,
+                                }
+                            }
+                        }
+                    ]
+                }
             }
-        else:
-            # if we do not have a proper similarity field we have to fall back to exact but slow vector similarity calculation
-            query = {
+            if self.embeddings_field_supports_similarity
+            else {
                 "script_score": {
                     "query": {"match_all": {}},
                     "script": {
@@ -2028,21 +2052,20 @@ class OpenSearchDocumentStore(ElasticsearchDocumentStore):
                         "params": {
                             "field": self.embedding_field,
                             "query_value": query_emb.tolist(),
-                            "space_type": self.similarity_to_space_type[self.similarity],
+                            "space_type": self.similarity_to_space_type[
+                                self.similarity
+                            ],
                         },
                     },
                 }
             }
-        return query
+        )
 
     def _scale_embedding_score(self, score):
         # adjust scores according to https://opensearch.org/docs/latest/search-plugins/knn/approximate-knn
         # and https://opensearch.org/docs/latest/search-plugins/knn/knn-score-script/
         if self.similarity == "dot_product":
-            if score > 1:
-                score = score - 1
-            else:
-                score = -(1 / score - 1)
+            score = score - 1 if score > 1 else -(1 / score - 1)
         elif self.similarity == "l2":
             score = 1 / score - 1
         elif self.similarity == "cosine":

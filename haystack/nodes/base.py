@@ -36,8 +36,7 @@ class BaseComponent:
     def get_subclass(cls, component_type: str):
         if component_type not in cls.subclasses.keys():
             raise Exception(f"Haystack component with the name '{component_type}' does not exist.")
-        subclass = cls.subclasses[component_type]
-        return subclass
+        return cls.subclasses[component_type]
 
     @classmethod
     def load_from_args(cls, component_type: str, **kwargs):
@@ -48,8 +47,7 @@ class BaseComponent:
         :param kwargs: parameters to pass to the __init__() for the component.
         """
         subclass = cls.get_subclass(component_type)
-        instance = subclass(**kwargs)
-        return instance
+        return subclass(**kwargs)
 
     @classmethod
     def load_from_pipeline_config(cls, pipeline_config: dict, component_name: str):
@@ -59,20 +57,18 @@ class BaseComponent:
         :param pipeline_config: the Pipelines YAML config parsed as a dict.
         :param component_name: the name of the component to load.
         """
-        if pipeline_config:
-            all_component_configs = pipeline_config["components"]
-            all_component_names = [comp["name"] for comp in all_component_configs]
-            component_config = next(comp for comp in all_component_configs if comp["name"] == component_name)
-            component_params = component_config["params"]
+        if not pipeline_config:
+            return cls.load_from_args(component_name)
+        all_component_configs = pipeline_config["components"]
+        all_component_names = [comp["name"] for comp in all_component_configs]
+        component_config = next(comp for comp in all_component_configs if comp["name"] == component_name)
+        component_params = component_config["params"]
 
-            for key, value in component_params.items():
-                if value in all_component_names:  # check if the param value is a reference to another component
-                    component_params[key] = cls.load_from_pipeline_config(pipeline_config, value)
+        for key, value in component_params.items():
+            if value in all_component_names:  # check if the param value is a reference to another component
+                component_params[key] = cls.load_from_pipeline_config(pipeline_config, value)
 
-            component_instance = cls.load_from_args(component_config["type"], **component_params)
-        else:
-            component_instance = cls.load_from_args(component_name)
-        return component_instance
+        return cls.load_from_args(component_config["type"], **component_params)
 
     @abstractmethod
     def run(
@@ -128,27 +124,24 @@ class BaseComponent:
             elif key in run_signature_args:  # global params
                 run_params[key] = value
 
-        run_inputs = {}
-        for key, value in arguments.items():
-            if key in run_signature_args:
-                run_inputs[key] = value
-
+        run_inputs = {
+            key: value
+            for key, value in arguments.items()
+            if key in run_signature_args
+        }
         output, stream = self.run(**run_inputs, **run_params)
 
         # Collect debug information
         debug_info = {}
         if getattr(self, "debug", None):
             # Include input
-            debug_info["input"] = {**run_inputs, **run_params}
-            debug_info["input"]["debug"] = self.debug
+            debug_info["input"] = {**run_inputs, **run_params, "debug": self.debug}
             # Include output
             filtered_output = {
                 key: value for key, value in output.items() if key != "_debug"
             }  # Exclude _debug to avoid recursion
             debug_info["output"] = filtered_output
-        # Include custom debug info
-        custom_debug = output.get("_debug", {})
-        if custom_debug:
+        if custom_debug := output.get("_debug", {}):
             debug_info["runtime"] = custom_debug
 
         # append _debug information from nodes

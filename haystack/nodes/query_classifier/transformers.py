@@ -76,7 +76,4 @@ class TransformersQueryClassifier(BaseQueryClassifier):
     def run(self, query):
         is_question: bool = self.query_classification_pipeline(query)[0]["label"] == "LABEL_1"
 
-        if is_question:
-            return {}, "output_1"
-        else:
-            return {}, "output_2"
+        return ({}, "output_1") if is_question else ({}, "output_2")

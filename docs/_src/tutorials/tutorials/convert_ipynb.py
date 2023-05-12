@@ -11,8 +11,7 @@ def atoi(text):
 
 
 def natural_keys(text):
-    test = [atoi(c) for c in re.split("(\d+)", text)]
-    return test
+    return [atoi(c) for c in re.split("(\d+)", text)]
 
 
 dir = Path("../../../../tutorials")
@@ -26,6 +25,6 @@ e = MarkdownExporter(exclude_output=True)
 for i, nb in enumerate(notebooks):
     body, resources = e.from_filename(dir / nb)
     print(f"Processing {dir}/{nb}")
-    with open(str(i + 1) + ".md", "w", encoding="utf-8") as f:
+    with open(f"{str(i + 1)}.md", "w", encoding="utf-8") as f:
         f.write(headers[i + 1] + "\n\n")
         f.write(body)

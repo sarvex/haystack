@@ -3,7 +3,7 @@ from types import ModuleType
 
 try:
     from importlib import metadata
-except (ModuleNotFoundError, ImportError):
+except ImportError:
     # Python <= 3.7
     import importlib_metadata as metadata  # type: ignore
 

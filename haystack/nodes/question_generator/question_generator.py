@@ -95,7 +95,7 @@ class QuestionGenerator(BaseComponent):
         ret = []
         for split_text in split_texts:
             if self.prompt not in split_text:
-                split_text = self.prompt + " " + split_text
+                split_text = f"{self.prompt} {split_text}"
             tokenized = self.tokenizer([split_text], return_tensors="pt")
             input_ids = tokenized["input_ids"].to(self.devices[0])
             attention_mask = tokenized["attention_mask"].to(

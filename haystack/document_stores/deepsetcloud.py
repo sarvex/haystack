@@ -9,7 +9,7 @@ from haystack.schema import Document, Label
 from haystack.utils import DeepsetCloud
 
 
-DEFAULT_API_ENDPOINT = f"DC_API_PLACEHOLDER/v1"  # TODO
+DEFAULT_API_ENDPOINT = "DC_API_PLACEHOLDER/v1"
 
 logger = logging.getLogger(__name__)
 
@@ -194,12 +194,18 @@ class DeepsetCloudDocumentStore(KeywordDocumentStore):
         if index is None:
             index = self.index
 
-        doc_dict = self.client.get_document(id=id, return_embedding=self.return_embedding, index=index, headers=headers)
-        doc: Optional[Document] = None
-        if doc_dict:
-            doc = Document.from_dict(doc_dict)
-
-        return doc
+        return (
+            Document.from_dict(doc_dict)
+            if (
+                doc_dict := self.client.get_document(
+                    id=id,
+                    return_embedding=self.return_embedding,
+                    index=index,
+                    headers=headers,
+                )
+            )
+            else None
+        )
 
     def get_documents_by_id(
         self,
@@ -323,8 +329,7 @@ class DeepsetCloudDocumentStore(KeywordDocumentStore):
             index=index,
             headers=headers,
         )
-        docs = [Document.from_dict(doc) for doc in doc_dicts]
-        return docs
+        return [Document.from_dict(doc) for doc in doc_dicts]
 
     def query(
         self,
@@ -411,8 +416,7 @@ class DeepsetCloudDocumentStore(KeywordDocumentStore):
         doc_dicts = self.client.query(
             query=query, filters=filters, top_k=top_k, custom_query=custom_query, index=index, headers=headers
         )
-        docs = [Document.from_dict(doc) for doc in doc_dicts]
-        return docs
+        return [Document.from_dict(doc) for doc in doc_dicts]
 
     def _create_document_field_map(self) -> Dict:
         return {}

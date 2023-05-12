@@ -96,10 +96,7 @@ class Processor(ABC):
         self.dev_filename = dev_filename
         self.test_filename = test_filename
         self.dev_split = dev_split
-        if data_dir:
-            self.data_dir = Path(data_dir)
-        else:
-            self.data_dir = None  # type: ignore
+        self.data_dir = Path(data_dir) if data_dir else None
         self.baskets: List = []
 
         self._log_params()
@@ -148,7 +145,7 @@ class Processor(ABC):
         logger.debug(
             f"Got more parameters than needed for loading {processor_name}: {unused_args}. " f"Those won't be used!"
         )
-        processor = cls.subclasses[processor_name](
+        return cls.subclasses[processor_name](
             data_dir=data_dir,
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -158,8 +155,6 @@ class Processor(ABC):
             dev_split=dev_split,
             **kwargs,
         )
-
-        return processor
 
     @classmethod
     def load_from_dir(cls, load_dir: str):
@@ -265,7 +260,7 @@ class Processor(ABC):
 
         # Because the fast tokenizers expect a str and not Path
         # always convert Path to str here.
-        self.tokenizer.save_pretrained(str(save_dir))
+        self.tokenizer.save_pretrained(save_dir)
 
         # save processor
         config["processor"] = self.__class__.__name__
@@ -334,24 +329,16 @@ class Processor(ABC):
 
         :return: True if all the samples in the basket has computed its features, False otherwise
         """
-        if basket.samples is None:
+        if basket.samples is None or len(basket.samples) == 0:
             return False
-        elif len(basket.samples) == 0:
-            return False
-        if basket.samples is None:
-            return False
-        else:
-            for sample in basket.samples:
-                if sample.features is None:
-                    return False
-        return True
+        return all(sample.features is not None for sample in basket.samples)
 
     def _log_samples(self, n_samples: int, baskets: List[SampleBasket]):
-        logger.debug("*** Show {} random examples ***".format(n_samples))
-        if len(baskets) == 0:
+        logger.debug(f"*** Show {n_samples} random examples ***")
+        if not baskets:
             logger.debug("*** No samples to show because there are no baskets ***")
             return
-        for i in range(n_samples):
+        for _ in range(n_samples):
             random_basket = random.choice(baskets)
             random_sample = random.choice(random_basket.samples)  # type: ignore
             logger.debug(random_sample)
@@ -364,7 +351,7 @@ class Processor(ABC):
         names = ["max_seq_len", "dev_split"]
         for name in names:
             value = getattr(self, name)
-            params.update({name: str(value)})
+            params[name] = str(value)
         MlLogger.log_params(params)
 
 
@@ -414,12 +401,9 @@ class SquadProcessor(Processor):
         """
         self.ph_output_type = "per_token_squad"
 
-        assert doc_stride < (max_seq_len - max_query_length), (
-            "doc_stride ({}) is longer than max_seq_len ({}) minus space reserved for query tokens ({}). \nThis means that there will be gaps "
-            "as the passage windows slide, causing the model to skip over parts of the document.\n"
-            "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384)\n "
-            "Or decrease max_query_length".format(doc_stride, max_seq_len, max_query_length)
-        )
+        assert doc_stride < (
+            max_seq_len - max_query_length
+        ), f"doc_stride ({doc_stride}) is longer than max_seq_len ({max_seq_len}) minus space reserved for query tokens ({max_query_length}). \nThis means that there will be gaps as the passage windows slide, causing the model to skip over parts of the document.\nPlease set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384)\n Or decrease max_query_length"
 
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
@@ -475,9 +459,8 @@ class SquadProcessor(Processor):
         dataset, tensor_names, baskets = self._create_dataset(baskets)
 
         # Logging
-        if indices:
-            if 0 in indices:
-                self._log_samples(n_samples=1, baskets=self.baskets)
+        if indices and 0 in indices:
+            self._log_samples(n_samples=1, baskets=self.baskets)
 
         # During inference we need to keep the information contained in baskets.
         if return_baskets:
@@ -487,8 +470,7 @@ class SquadProcessor(Processor):
 
     def file_to_dicts(self, file: str) -> List[dict]:
         nested_dicts = _read_squad_file(filename=file)
-        dicts = [y for x in nested_dicts for y in x["paragraphs"]]
-        return dicts
+        return [y for x in nested_dicts for y in x["paragraphs"]]
 
     # TODO use Input Objects instead of this function, remove Natural Questions (NQ) related code
     def convert_qa_input_dict(self, infer_dict: dict):
@@ -497,12 +479,9 @@ class SquadProcessor(Processor):
         is_impossible field to answer_type so that NQ and SQuAD dicts have the same format.
         """
         # check again for doc stride vs max_seq_len when. Parameters can be changed for already initialized models (e.g. in haystack)
-        assert self.doc_stride < (self.max_seq_len - self.max_query_length), (
-            "doc_stride ({}) is longer than max_seq_len ({}) minus space reserved for query tokens ({}). \nThis means that there will be gaps "
-            "as the passage windows slide, causing the model to skip over parts of the document.\n"
-            "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384)\n "
-            "Or decrease max_query_length".format(self.doc_stride, self.max_seq_len, self.max_query_length)
-        )
+        assert self.doc_stride < (
+            self.max_seq_len - self.max_query_length
+        ), f"doc_stride ({self.doc_stride}) is longer than max_seq_len ({self.max_seq_len}) minus space reserved for query tokens ({self.max_query_length}). \nThis means that there will be gaps as the passage windows slide, causing the model to skip over parts of the document.\nPlease set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384)\n Or decrease max_query_length"
 
         try:
             # Check if infer_dict is already in internal json format
@@ -512,9 +491,11 @@ class SquadProcessor(Processor):
             questions = infer_dict["questions"]
             text = infer_dict["text"]
             uid = infer_dict.get("id", None)
-            qas = [{"question": q, "id": uid, "answers": [], "answer_type": None} for i, q in enumerate(questions)]
-            converted = {"qas": qas, "context": text}
-            return converted
+            qas = [
+                {"question": q, "id": uid, "answers": [], "answer_type": None}
+                for q in questions
+            ]
+            return {"qas": qas, "context": text}
         except KeyError:
             raise Exception("Input does not have the expected format")
 
@@ -601,7 +582,7 @@ class SquadProcessor(Processor):
         """
         for basket in baskets:
             error_in_answer = False
-            for num, sample in enumerate(basket.samples):  # type: ignore
+            for sample in basket.samples:
                 # Dealing with potentially multiple answers (e.g. Squad dev set)
                 # Initializing a numpy array of shape (max_answers, 2), filled with -1 for missing values
                 label_idxs = np.full((self.max_answers, 2), fill_value=-1)
@@ -625,18 +606,17 @@ class SquadProcessor(Processor):
                         answer_start_t -= sample.tokenized["passage_start_t"]  # type: ignore
                         answer_end_t -= sample.tokenized["passage_start_t"]  # type: ignore
 
-                        # Initialize some basic variables
-                        question_len_t = len(sample.tokenized["question_tokens"])  # type: ignore
                         passage_len_t = len(sample.tokenized["passage_tokens"])  # type: ignore
 
                         # Check that start and end are contained within this passage
                         # answer_end_t is 0 if the first token is the answer
                         # answer_end_t is passage_len_t if the last token is the answer
                         if passage_len_t > answer_start_t >= 0 and passage_len_t >= answer_end_t >= 0:
+                            # Initialize some basic variables
+                            question_len_t = len(sample.tokenized["question_tokens"])  # type: ignore
                             # Then adjust the start and end offsets by adding question and special token
                             label_idxs[i][0] = self.sp_toks_start + question_len_t + self.sp_toks_mid + answer_start_t
                             label_idxs[i][1] = self.sp_toks_start + question_len_t + self.sp_toks_mid + answer_end_t
-                        # If the start or end of the span answer is outside the passage, treat passage as no_answer
                         else:
                             label_idxs[i][0] = 0
                             label_idxs[i][1] = 0
@@ -644,9 +624,7 @@ class SquadProcessor(Processor):
                         ########## answer checking ##############################
                         # TODO, move this checking into input validation functions and delete wrong examples there
                         # Cases where the answer is not within the current passage will be turned into no answers by the featurization fn
-                        if answer_start_t < 0 or answer_end_t >= passage_len_t:
-                            pass
-                        else:
+                        if answer_start_t >= 0 and answer_end_t < passage_len_t:
                             doc_text = basket.raw["document_text"]
                             answer_indices = doc_text[answer_start_c : answer_end_c + 1]
                             answer_text = answer["text"]
@@ -669,7 +647,7 @@ class SquadProcessor(Processor):
                                 label_idxs[i][0] = -100  # TODO remove this hack also from featurization
                                 label_idxs[i][1] = -100
                                 break  # Break loop around answers, so the error message is not shown multiple times
-                        ########## end of checking ####################
+                                        ########## end of checking ####################
 
                 sample.tokenized["labels"] = label_idxs  # type: ignore
 
@@ -794,7 +772,7 @@ class SquadProcessor(Processor):
             else:
                 # remove the entire basket
                 basket_to_remove.append(basket)
-        if len(basket_to_remove) > 0:
+        if basket_to_remove:
             for basket in basket_to_remove:
                 # if basket_to_remove is not empty remove the related baskets
                 baskets.remove(basket)
@@ -1085,7 +1063,7 @@ class TextSimilarityProcessor(Processor):
 
                     if len(tokenized_query) == 0:
                         logger.warning(
-                            f"The query could not be tokenized, likely because it contains a character that the query tokenizer does not recognize"
+                            "The query could not be tokenized, likely because it contains a character that the query tokenizer does not recognize"
                         )
                         return None
 
@@ -1180,7 +1158,7 @@ class TextSimilarityProcessor(Processor):
             else:
                 # remove the entire basket
                 basket_to_remove.append(basket)
-        if len(basket_to_remove) > 0:
+        if basket_to_remove:
             for basket in basket_to_remove:
                 # if basket_to_remove is not empty remove the related baskets
                 problematic_ids.add(basket.id_internal)
@@ -1205,7 +1183,7 @@ class TextSimilarityProcessor(Processor):
                 logger.warning(
                     f"Couldn't find title although `embed_title` is set to True for DPR. Using title='' now. Related passage text: '{ctx}' "
                 )
-            res.append(tuple((title, ctx)))
+            res.append((title, ctx))
         return res
 
 
@@ -1410,8 +1388,7 @@ class TableTextSimilarityProcessor(Processor):
                  "rows": list of list of str, "label": "positive" / "hard_negative", "type": "table", "external_id": id}
             ...]}
         """
-        dicts = self._read_multimodal_dpr_json(file, max_samples=self.max_samples)
-        return dicts
+        return self._read_multimodal_dpr_json(file, max_samples=self.max_samples)
 
     def _read_multimodal_dpr_json(self, file: str, max_samples: Optional[int] = None) -> List[Dict]:
         """
@@ -1559,7 +1536,7 @@ class TableTextSimilarityProcessor(Processor):
 
                     if len(tokenized_query) == 0:
                         logger.warning(
-                            f"The query could not be tokenized, likely because it contains a character that the query tokenizer does not recognize"
+                            "The query could not be tokenized, likely because it contains a character that the query tokenizer does not recognize"
                         )
                         return None
 
@@ -1683,7 +1660,7 @@ class TableTextSimilarityProcessor(Processor):
             else:
                 # remove the entire basket
                 basket_to_remove.append(basket)
-        if len(basket_to_remove) > 0:
+        if basket_to_remove:
             for basket in basket_to_remove:
                 # if basket_to_remove is not empty remove the related baskets
                 problematic_ids.add(basket.id_internal)
@@ -1705,7 +1682,7 @@ class TableTextSimilarityProcessor(Processor):
         for meta, ctx in zip(meta_fields, texts):
             if meta is None:
                 meta = ""
-            res.append(tuple((meta, ctx)))
+            res.append((meta, ctx))
         return res
 
 
@@ -1793,7 +1770,7 @@ class TextClassificationProcessor(Processor):
         self.header = header
         self.max_samples = max_samples
         self.dev_stratification = dev_stratification
-        logger.debug(f"Currently no support in Processor for returning problematic ids")
+        logger.debug("Currently no support in Processor for returning problematic ids")
 
         super(TextClassificationProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -1807,10 +1784,7 @@ class TextClassificationProcessor(Processor):
             proxies=proxies,
         )
         if metric and label_list:
-            if multilabel:
-                task_type = "multilabel_classification"
-            else:
-                task_type = "classification"
+            task_type = "multilabel_classification" if multilabel else "classification"
             self.add_task(
                 name="text_classification",
                 metric=metric,
@@ -1862,16 +1836,14 @@ class TextClassificationProcessor(Processor):
             # i.e. not inference
             if not return_baskets:
                 label_dict = self.convert_labels(dictionary)
-                feat_dict.update(label_dict)
+                feat_dict |= label_dict
 
             # Add Basket to self.baskets
             curr_sample = Sample(id="", clear_text=dictionary, tokenized=tokenized, features=[feat_dict])
             curr_basket = SampleBasket(id_internal=None, raw=dictionary, id_external=None, samples=[curr_sample])
             self.baskets.append(curr_basket)
 
-        if indices and 0 not in indices:
-            pass
-        else:
+        if not indices or 0 in indices:
             self._log_samples(n_samples=1, baskets=self.baskets)
 
         # TODO populate problematic ids
@@ -1983,27 +1955,24 @@ class InferenceProcessor(TextClassificationProcessor):
         For slow tokenizers, s3e or wordembedding tokenizers the function works on _dict_to_samples and _sample_to_features
         """
         # TODO remove this sections once tokenizers work the same way for slow/fast and our special tokenizers
-        if not self.tokenizer.is_fast:
-            self.baskets = []
-            for d in dicts:
-                sample = self._dict_to_samples(dictionary=d)
-                features = self._sample_to_features(sample)
-                sample.features = features
-                basket = SampleBasket(id_internal=None, raw=d, id_external=None, samples=[sample])
-                self.baskets.append(basket)
-            if indices and 0 not in indices:
-                pass
-            else:
-                self._log_samples(n_samples=1, baskets=self.baskets)
-
-            problematic_ids: set = set()
-            dataset, tensornames = self._create_dataset()
-            ret = [dataset, tensornames, problematic_ids]
-            if return_baskets:
-                ret.append(self.baskets)
-            return ret
-        else:
+        if self.tokenizer.is_fast:
             return super().dataset_from_dicts(dicts=dicts, indices=indices, return_baskets=return_baskets, debug=debug)
+        self.baskets = []
+        for d in dicts:
+            sample = self._dict_to_samples(dictionary=d)
+            features = self._sample_to_features(sample)
+            sample.features = features
+            basket = SampleBasket(id_internal=None, raw=d, id_external=None, samples=[sample])
+            self.baskets.append(basket)
+        if not indices or 0 in indices:
+            self._log_samples(n_samples=1, baskets=self.baskets)
+
+        problematic_ids: set = set()
+        dataset, tensornames = self._create_dataset()
+        ret = [dataset, tensornames, problematic_ids]
+        if return_baskets:
+            ret.append(self.baskets)
+        return ret
 
     # Private method to keep s3e pooling and embedding extraction working
     def _dict_to_samples(self, dictionary: Dict, **kwargs) -> Sample:
@@ -2019,13 +1988,12 @@ class InferenceProcessor(TextClassificationProcessor):
 
     # Private method to keep s3e pooling and embedding extraction working
     def _sample_to_features(self, sample: Sample) -> Dict:
-        features = sample_to_features_text(
+        return sample_to_features_text(
             sample=sample,
             tasks=self.tasks,
             max_seq_len=self.max_seq_len,
             tokenizer=self.tokenizer,
         )
-        return features
 
 
 class UnlabeledTextProcessor(Processor):
@@ -2063,8 +2031,7 @@ class UnlabeledTextProcessor(Processor):
     def file_to_dicts(self, file: str) -> List[dict]:
         dicts = []
         with open(file, "r") as f:
-            for line in f:
-                dicts.append({"text": line})
+            dicts.extend({"text": line} for line in f)
         return dicts
 
     def dataset_from_dicts(self, dicts: List[dict], indices: Optional[List[int]] = None, return_baskets: bool = False):
@@ -2079,12 +2046,12 @@ class UnlabeledTextProcessor(Processor):
             truncation=True,
             max_length=self.max_seq_len,
         )
-        names = [key for key in tokens]
+        names = list(tokens)
         inputs = [tokens[key] for key in tokens]
-        if not "padding_mask" in names:
+        if "padding_mask" not in names:
             index = names.index("attention_mask")
             names[index] = "padding_mask"
-        if not "segment_ids" in names:
+        if "segment_ids" not in names:
             index = names.index("token_type_ids")
             names[index] = "segment_ids"
 
@@ -2172,8 +2139,7 @@ def _read_dpr_json(
     if Path(file).suffix.lower() == ".jsonl":
         dicts = []
         with open(file, encoding="utf-8") as f:
-            for line in f:
-                dicts.append(json.loads(line))
+            dicts.extend(json.loads(line) for line in f)
     else:
         dicts = json.load(open(file, encoding="utf-8"))
 
@@ -2199,27 +2165,31 @@ def _read_dpr_json(
             elif key in positive_context_json_keys:
                 if shuffle_positives:
                     random.shuffle(val)
-                for passage in val[:num_positives]:
-                    passages.append(
-                        {
-                            "title": passage["title"],
-                            "text": passage["text"],
-                            "label": "positive",
-                            "external_id": passage.get("passage_id", uuid.uuid4().hex.upper()[0:8]),
-                        }
-                    )
+                passages.extend(
+                    {
+                        "title": passage["title"],
+                        "text": passage["text"],
+                        "label": "positive",
+                        "external_id": passage.get(
+                            "passage_id", uuid.uuid4().hex.upper()[:8]
+                        ),
+                    }
+                    for passage in val[:num_positives]
+                )
             elif key in hard_negative_json_keys:
                 if shuffle_negatives:
                     random.shuffle(val)
-                for passage in val[:num_hard_negatives]:
-                    passages.append(
-                        {
-                            "title": passage["title"],
-                            "text": passage["text"],
-                            "label": "hard_negative",
-                            "external_id": passage.get("passage_id", uuid.uuid4().hex.upper()[0:8]),
-                        }
-                    )
+                passages.extend(
+                    {
+                        "title": passage["title"],
+                        "text": passage["text"],
+                        "label": "hard_negative",
+                        "external_id": passage.get(
+                            "passage_id", uuid.uuid4().hex.upper()[:8]
+                        ),
+                    }
+                    for passage in val[:num_hard_negatives]
+                )
         sample["passages"] = passages
         standard_dicts.append(sample)
     return standard_dicts

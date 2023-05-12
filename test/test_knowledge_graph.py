@@ -21,8 +21,10 @@ def test_graph_retrieval():
 
     kg = GraphDBKnowledgeGraph(index="tutorial_10_index")
     kg.delete_index()
-    kg.create_index(config_path=Path(graph_dir + "repo-config.ttl"))
-    kg.import_from_ttl_file(index="tutorial_10_index", path=Path(graph_dir + "triples.ttl"))
+    kg.create_index(config_path=Path(f"{graph_dir}repo-config.ttl"))
+    kg.import_from_ttl_file(
+        index="tutorial_10_index", path=Path(f"{graph_dir}triples.ttl")
+    )
     triple = {
         "p": {"type": "uri", "value": "https://deepset.ai/harry_potter/_paternalgrandfather"},
         "s": {"type": "uri", "value": "https://deepset.ai/harry_potter/Melody_fawley"},
@@ -39,7 +41,9 @@ def test_graph_retrieval():
     """
     kg.prefixes = prefixes
 
-    kgqa_retriever = Text2SparqlRetriever(knowledge_graph=kg, model_name_or_path=model_dir + "hp_v3.4")
+    kgqa_retriever = Text2SparqlRetriever(
+        knowledge_graph=kg, model_name_or_path=f"{model_dir}hp_v3.4"
+    )
 
     result = kgqa_retriever.retrieve(query="In which house is Harry Potter?")
     assert result[0] == {

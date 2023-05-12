@@ -18,7 +18,7 @@ def test_summarization_pipeline_with_translator(
 ):
     document_store.write_documents(SPLIT_DOCS)
 
-    if isinstance(retriever, EmbeddingRetriever) or isinstance(retriever, DensePassageRetriever):
+    if isinstance(retriever, (EmbeddingRetriever, DensePassageRetriever)):
         document_store.update_embeddings(retriever=retriever)
 
     query = "Wo steht der Eiffelturm?"

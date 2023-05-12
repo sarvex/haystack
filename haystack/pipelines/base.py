@@ -93,13 +93,12 @@ class BasePipeline:
         :param add_comment: Whether to add a preceding comment that this code has been generated.
                             Default value is False.
         """
-        code = _PipelineCodeGen.generate_code(
+        return _PipelineCodeGen.generate_code(
             pipeline=self,
             pipeline_variable_name=pipeline_variable_name,
             generate_imports=generate_imports,
             comment=CODE_GEN_DEFAULT_COMMENT if add_comment else None,
         )
-        return code
 
     def to_notebook_cell(
         self,
@@ -307,12 +306,11 @@ class BasePipeline:
                 )
                 component_config["params"] = params
 
-        pipeline = cls.load_from_config(
+        return cls.load_from_config(
             pipeline_config=pipeline_config,
             pipeline_name=pipeline_name,
             overwrite_with_env_variables=overwrite_with_env_variables,
         )
-        return pipeline
 
     @classmethod
     def list_pipelines_on_deepset_cloud(
@@ -348,8 +346,7 @@ class BasePipeline:
                         'total_file_count': 31}}]
         """
         client = DeepsetCloud.get_pipeline_client(api_key=api_key, api_endpoint=api_endpoint, workspace=workspace)
-        pipeline_config_infos = list(client.list_pipeline_configs())
-        return pipeline_config_infos
+        return list(client.list_pipeline_configs())
 
     @classmethod
     def save_to_deepset_cloud(
@@ -380,23 +377,25 @@ class BasePipeline:
         index_config = index_pipeline.get_config()
         pipelines = query_config["pipelines"] + index_config["pipelines"]
         all_components = query_config["components"] + index_config["components"]
-        distinct_components = [c for c in {component["name"]: component for component in all_components}.values()]
+        distinct_components = list(
+            {component["name"]: component for component in all_components}.values()
+        )
         config = {"components": distinct_components, "pipelines": pipelines, "version": "0.9"}
 
         client = DeepsetCloud.get_pipeline_client(api_key=api_key, api_endpoint=api_endpoint, workspace=workspace)
-        pipeline_config_info = client.get_pipeline_config_info(pipeline_config_name=pipeline_config_name)
-        if pipeline_config_info:
-            if overwrite:
-                if pipeline_config_info["status"] == "DEPLOYED":
-                    raise ValueError(
-                        f"Deployed pipeline configs are not allowed to be updated. Please undeploy pipeline config '{pipeline_config_name}' first."
-                    )
-                client.update_pipeline_config(config=config, pipeline_config_name=pipeline_config_name)
-                logger.info(f"Pipeline config '{pipeline_config_name}' successfully updated.")
-            else:
+        if pipeline_config_info := client.get_pipeline_config_info(
+            pipeline_config_name=pipeline_config_name
+        ):
+            if not overwrite:
                 raise ValueError(
                     f"Pipeline config '{pipeline_config_name}' already exists. Set `overwrite=True` to overwrite pipeline config."
                 )
+            if pipeline_config_info["status"] == "DEPLOYED":
+                raise ValueError(
+                    f"Deployed pipeline configs are not allowed to be updated. Please undeploy pipeline config '{pipeline_config_name}' first."
+                )
+            client.update_pipeline_config(config=config, pipeline_config_name=pipeline_config_name)
+            logger.info(f"Pipeline config '{pipeline_config_name}' successfully updated.")
         else:
             client.save_pipeline_config(config=config, pipeline_config_name=pipeline_config_name)
             logger.info(f"Pipeline config '{pipeline_config_name}' successfully created.")
@@ -417,12 +416,15 @@ class BasePipeline:
                 pipeline_definition = pipeline_config["pipelines"][0]
             else:
                 raise Exception("The YAML contains multiple pipelines. Please specify the pipeline name to load.")
-        else:
-            pipelines_in_definitions = list(filter(lambda p: p["name"] == pipeline_name, pipeline_config["pipelines"]))
-            if not pipelines_in_definitions:
-                raise KeyError(f"Cannot find any pipeline with name '{pipeline_name}' declared in the YAML file.")
+        elif pipelines_in_definitions := list(
+            filter(
+                lambda p: p["name"] == pipeline_name, pipeline_config["pipelines"]
+            )
+        ):
             pipeline_definition = pipelines_in_definitions[0]
 
+        else:
+            raise KeyError(f"Cannot find any pipeline with name '{pipeline_name}' declared in the YAML file.")
         return pipeline_definition
 
     @classmethod
@@ -507,11 +509,10 @@ class Pipeline(BasePipeline):
         """
         if self.root_node is None:
             root_node = inputs[0]
-            if root_node in ["Query", "File"]:
-                self.root_node = root_node
-                self.graph.add_node(root_node, component=RootNode())
-            else:
+            if root_node not in ["Query", "File"]:
                 raise KeyError(f"Root node '{root_node}' is invalid. Available options are 'Query' and 'File'.")
+            self.root_node = root_node
+            self.graph.add_node(root_node, component=RootNode())
         component.name = name
         self.graph.add_node(name, component=component, inputs=inputs)
 
@@ -549,8 +550,7 @@ class Pipeline(BasePipeline):
         :param name: The name of the node.
         """
         graph_node = self.graph.nodes.get(name)
-        component = graph_node["component"] if graph_node else None
-        return component
+        return graph_node["component"] if graph_node else None
 
     def set_node(self, name: str, component):
         """
@@ -589,21 +589,21 @@ class Pipeline(BasePipeline):
                       then be found in the dict returned by this method under the key "_debug"
         """
         # validate the node names
-        if params:
-            if not all(node_id in self.graph.nodes for node_id in params.keys()):
-
-                # Might be a non-targeted param. Verify that too
-                not_a_node = set(params.keys()) - set(self.graph.nodes)
-                valid_global_params = set()
-                for node_id in self.graph.nodes:
-                    run_signature_args = inspect.signature(self.graph.nodes[node_id]["component"].run).parameters.keys()
-                    valid_global_params |= set(run_signature_args)
-                invalid_keys = [key for key in not_a_node if key not in valid_global_params]
-
-                if invalid_keys:
-                    raise ValueError(
-                        f"No node(s) or global parameter(s) named {', '.join(invalid_keys)} found in pipeline."
-                    )
+        if params and any(
+            node_id not in self.graph.nodes for node_id in params.keys()
+        ):
+            # Might be a non-targeted param. Verify that too
+            not_a_node = set(params.keys()) - set(self.graph.nodes)
+            valid_global_params = set()
+            for node_id in self.graph.nodes:
+                run_signature_args = inspect.signature(self.graph.nodes[node_id]["component"].run).parameters.keys()
+                valid_global_params |= set(run_signature_args)
+            if invalid_keys := [
+                key for key in not_a_node if key not in valid_global_params
+            ]:
+                raise ValueError(
+                    f"No node(s) or global parameter(s) named {', '.join(invalid_keys)} found in pipeline."
+                )
 
         node_output = None
         queue = {
@@ -908,12 +908,13 @@ class Pipeline(BasePipeline):
 
     def get_next_nodes(self, node_id: str, stream_id: str):
         current_node_edges = self.graph.edges(node_id, data=True)
-        next_nodes = [
+        return [
             next_node
             for _, next_node, data in current_node_edges
-            if not stream_id or data["label"] == stream_id or stream_id == "output_all"
+            if not stream_id
+            or data["label"] == stream_id
+            or stream_id == "output_all"
         ]
-        return next_nodes
 
     def get_nodes_by_class(self, class_type) -> List[Any]:
         """
@@ -927,12 +928,11 @@ class Pipeline(BasePipeline):
         :return: List of components that are an instance the requested class
         """
 
-        matches = [
+        return [
             self.graph.nodes.get(node)["component"]
             for node in self.graph.nodes
             if isinstance(self.graph.nodes.get(node)["component"], class_type)
         ]
-        return matches
 
     def get_document_store(self) -> Optional[BaseDocumentStore]:
         """
@@ -943,15 +943,17 @@ class Pipeline(BasePipeline):
         matches = self.get_nodes_by_class(class_type=BaseDocumentStore)
         if len(matches) == 0:
             matches = list(
-                set(retriever.document_store for retriever in self.get_nodes_by_class(class_type=BaseRetriever))
+                {
+                    retriever.document_store
+                    for retriever in self.get_nodes_by_class(
+                        class_type=BaseRetriever
+                    )
+                }
             )
 
         if len(matches) > 1:
             raise Exception(f"Multiple Document Stores found in Pipeline: {matches}")
-        if len(matches) == 0:
-            return None
-        else:
-            return matches[0]
+        return None if len(matches) == 0 else matches[0]
 
     def draw(self, path: Path = Path("pipeline.png")):
         """
@@ -1046,7 +1048,7 @@ class Pipeline(BasePipeline):
         :param components: dict containing component objects.
         """
         try:
-            if name in components.keys():  # check if component is already loaded.
+            if name in components:  # check if component is already loaded.
                 return components[name]
 
             component_params = definitions[name].get("params", {})
@@ -1056,9 +1058,7 @@ class Pipeline(BasePipeline):
             for key, value in component_params.items():
                 # Component params can reference to other components. For instance, a Retriever can reference a
                 # DocumentStore defined in the YAML. All references should be recursively resolved.
-                if (
-                    isinstance(value, str) and value in definitions.keys()
-                ):  # check if the param value is a reference to another component.
+                if isinstance(value, str) and value in definitions:  # check if the param value is a reference to another component.
                     if value not in components.keys():  # check if the referenced component is already loaded.
                         cls._load_or_get_component(name=value, definitions=definitions, components=components)
                     component_params[key] = components[
@@ -1121,7 +1121,8 @@ class Pipeline(BasePipeline):
                     sub_component_params = {
                         k: v
                         for k, v in sub_component["params"].items()
-                        if sub_component_signature[k].default != v or return_defaults is True
+                        if sub_component_signature[k].default != v
+                        or return_defaults
                     }
 
                     sub_component_name = self._generate_component_name(
@@ -1133,19 +1134,20 @@ class Pipeline(BasePipeline):
                         "params": sub_component_params,
                     }
                     components[node]["params"][param_key] = sub_component_name
-                else:
-                    if component_signature[param_key].default != param_value or return_defaults is True:
-                        components[node]["params"][param_key] = param_value
+                elif (
+                    component_signature[param_key].default != param_value
+                    or return_defaults
+                ):
+                    components[node]["params"][param_key] = param_value
 
             # create the Pipeline definition with how the Component are connected
             pipelines[pipeline_name]["nodes"].append({"name": node, "inputs": list(self.graph.predecessors(node))})
 
-        config = {
+        return {
             "components": list(components.values()),
             "pipelines": list(pipelines.values()),
             "version": __version__,
         }
-        return config
 
     def _generate_component_name(
         self,
@@ -1241,13 +1243,12 @@ class RayPipeline(Pipeline):
         for node_config in pipeline_definition["nodes"]:
             if pipeline.root_node is None:
                 root_node = node_config["inputs"][0]
-                if root_node in ["Query", "File"]:
-                    pipeline.root_node = root_node
-                    handle = cls._create_ray_deployment(component_name=root_node, pipeline_config=pipeline_config)
-                    pipeline._add_ray_deployment_in_graph(handle=handle, name=root_node, outgoing_edges=1, inputs=[])
-                else:
+                if root_node not in ["Query", "File"]:
                     raise KeyError(f"Root node '{root_node}' is invalid. Available options are 'Query' and 'File'.")
 
+                pipeline.root_node = root_node
+                handle = cls._create_ray_deployment(component_name=root_node, pipeline_config=pipeline_config)
+                pipeline._add_ray_deployment_in_graph(handle=handle, name=root_node, outgoing_edges=1, inputs=[])
             name = node_config["name"]
             component_type = component_definitions[name]["type"]
             component_class = BaseComponent.get_subclass(component_type)
@@ -1349,8 +1350,7 @@ class RayPipeline(Pipeline):
         """
         RayDeployment = serve.deployment(_RayDeploymentWrapper, name=component_name, num_replicas=replicas)  # type: ignore
         RayDeployment.deploy(pipeline_config, component_name)
-        handle = RayDeployment.get_handle()
-        return handle
+        return RayDeployment.get_handle()
 
     def run(  # type: ignore
         self,
@@ -1466,7 +1466,7 @@ class _RayDeploymentWrapper:
         :param pipeline_config: Pipeline YAML parsed as a dict.
         :param component_name: Component Class name.
         """
-        if component_name in ["Query", "File"]:
+        if component_name in {"Query", "File"}:
             self.node = RootNode()
         else:
             self.node = BaseComponent.load_from_pipeline_config(pipeline_config, component_name)
@@ -1536,8 +1536,7 @@ class _PipelineCodeGen:
             pipeline_variable_name=pipeline_variable_name,
         )
 
-        code_parts.append(components_code)
-        code_parts.append(pipeline_code)
+        code_parts.extend((components_code, pipeline_code))
         code = "\n\n".join(code_parts)
 
         if comment:
@@ -1559,8 +1558,7 @@ class _PipelineCodeGen:
                 f'{pipeline_variable_name}.add_node(component={component_variable_name}, name="{node_name}", inputs=[{inputs}])'
             )
 
-        code = "\n".join(code_lines)
-        return code
+        return "\n".join(code_lines)
 
     @classmethod
     def _generate_components_code(
@@ -1584,8 +1582,7 @@ class _PipelineCodeGen:
 
         ordered_components = cls._order_components(dependency_map=dependency_map)
         ordered_declarations = [declarations[component] for component in ordered_components]
-        code = "\n".join(ordered_declarations)
-        return code
+        return "\n".join(ordered_declarations)
 
     @classmethod
     def _generate_imports_code(cls, types_to_import: List[str]) -> str:
@@ -1611,8 +1608,7 @@ class _PipelineCodeGen:
             line_prefix = "# " if mod == MODULE_NOT_FOUND else ""
             code_lines.append(f"{line_prefix}from {mod} import {import_types}")
 
-        code = "\n".join(code_lines)
-        return code
+        return "\n".join(code_lines)
 
     @classmethod
     def _order_components(
@@ -1679,32 +1675,19 @@ class _PipelineEvalReportGen:
     def _format_wrong_sample(cls, query: dict):
         metrics = "\n \t".join([f"{name}: {value}" for name, value in query["metrics"].items()])
         documents = "\n\n \t".join([cls._format_document_answer(doc) for doc in query.get("documents", [])])
-        documents = f"Documents: \n \t{documents}\n" if len(documents) > 0 else ""
+        documents = f"Documents: \n \t{documents}\n" if documents != "" else ""
         answers = "\n\n \t".join([cls._format_document_answer(answer) for answer in query.get("answers", [])])
-        answers = f"Answers: \n \t{answers}\n" if len(answers) > 0 else ""
+        answers = f"Answers: \n \t{answers}\n" if answers != "" else ""
         gold_document_ids = "\n \t".join(query["gold_document_ids"])
         gold_answers = "\n \t".join(query.get("gold_answers", []))
-        gold_answers = f"Gold Answers: \n \t{gold_answers}\n" if len(gold_answers) > 0 else ""
-        s = (
-            f"Query: \n \t{query['query']}\n"
-            f"{gold_answers}"
-            f"Gold Document Ids: \n \t{gold_document_ids}\n"
-            f"Metrics: \n \t{metrics}\n"
-            f"{answers}"
-            f"{documents}"
-            f"_______________________________________________________"
+        gold_answers = (
+            f"Gold Answers: \n \t{gold_answers}\n" if gold_answers != "" else ""
         )
-        return s
+        return f"Query: \n \t{query['query']}\n{gold_answers}Gold Document Ids: \n \t{gold_document_ids}\nMetrics: \n \t{metrics}\n{answers}{documents}_______________________________________________________"
 
     @classmethod
     def _format_wrong_samples_node(cls, node_name: str, wrong_samples_formatted: str):
-        s = (
-            f"                Wrong {node_name} Examples\n"
-            f"=======================================================\n"
-            f"{wrong_samples_formatted}\n"
-            f"=======================================================\n"
-        )
-        return s
+        return f"                Wrong {node_name} Examples\n=======================================================\n{wrong_samples_formatted}\n=======================================================\n"
 
     @classmethod
     def _format_wrong_samples_report(cls, eval_result: EvaluationResult, n_wrong_examples: int = 3):
@@ -1724,34 +1707,21 @@ class _PipelineEvalReportGen:
     @classmethod
     def _format_pipeline_node(cls, node: str, calculated_metrics: dict):
         node_metrics: dict = {}
-        for metric_mode in calculated_metrics:
-            for metric, value in calculated_metrics[metric_mode].get(node, {}).items():
+        for metric_mode, value_ in calculated_metrics.items():
+            for metric, value in value_.get(node, {}).items():
                 node_metrics[f"{metric}{metric_mode}"] = value
 
         node_metrics_formatted = "\n".join(
             sorted([f"                        | {metric}: {value:5.3}" for metric, value in node_metrics.items()])
         )
-        node_metrics_formatted = f"{node_metrics_formatted}\n" if len(node_metrics_formatted) > 0 else ""
-        s = (
-            f"                      {node}\n"
-            f"                        |\n"
-            f"{node_metrics_formatted}"
-            f"                        |"
+        node_metrics_formatted = (
+            f"{node_metrics_formatted}\n" if node_metrics_formatted != "" else ""
         )
-        return s
+        return f"                      {node}\n                        |\n{node_metrics_formatted}                        |"
 
     @classmethod
     def _format_pipeline_overview(cls, calculated_metrics: dict, pipeline: Pipeline):
         pipeline_overview = "\n".join(
             [cls._format_pipeline_node(node, calculated_metrics) for node in pipeline.graph.nodes]
         )
-        s = (
-            f"================== Evaluation Report ==================\n"
-            f"=======================================================\n"
-            f"                   Pipeline Overview\n"
-            f"=======================================================\n"
-            f"{pipeline_overview}\n"
-            f"                      Output\n"
-            f"=======================================================\n"
-        )
-        return s
+        return f"================== Evaluation Report ==================\n=======================================================\n                   Pipeline Overview\n=======================================================\n{pipeline_overview}\n                      Output\n=======================================================\n"

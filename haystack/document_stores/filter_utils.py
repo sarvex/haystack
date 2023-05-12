@@ -118,10 +118,7 @@ class LogicalFilterClause(ABC):
                     conditions.extend(ComparisonOperation.parse(key, value))
 
         if cls == LogicalFilterClause:
-            if len(conditions) == 1:
-                return conditions[0]
-            else:
-                return AndOperation(conditions)
+            return conditions[0] if len(conditions) == 1 else AndOperation(conditions)
         else:
             return cls(conditions)
 
@@ -150,8 +147,10 @@ class LogicalFilterClause(ABC):
         Merges Elasticsearch range queries that perform on the same metadata field.
         """
 
-        range_conditions = [cond["range"] for cond in filter(lambda condition: "range" in condition, conditions)]
-        if range_conditions:
+        if range_conditions := [
+            cond["range"]
+            for cond in filter(lambda condition: "range" in condition, conditions)
+        ]:
             conditions = [condition for condition in conditions if "range" not in condition]
             range_conditions_dict = nested_defaultdict()
             for condition in range_conditions:
@@ -160,9 +159,10 @@ class LogicalFilterClause(ABC):
                 comparison_value = condition[field_name][operation]
                 range_conditions_dict[field_name][operation] = comparison_value
 
-            for field_name, comparison_operations in range_conditions_dict.items():
-                conditions.append({"range": {field_name: comparison_operations}})
-
+            conditions.extend(
+                {"range": {field_name: comparison_operations}}
+                for field_name, comparison_operations in range_conditions_dict.items()
+            )
         return conditions
 
     @abstractmethod

@@ -65,12 +65,10 @@ class NamedDataLoader(DataLoader):
         )
 
     def __len__(self):
-        if type(self.dataset).__name__ == "_StreamingDataSet":
-            num_samples = len(self.dataset)
-            num_batches = ceil(num_samples / self.dataset.batch_size)
-            return num_batches
-        else:
+        if type(self.dataset).__name__ != "_StreamingDataSet":
             return super().__len__()
+        num_samples = len(self.dataset)
+        return ceil(num_samples / self.dataset.batch_size)
 
 
 def covert_dataset_to_dataloader(dataset, sampler, batch_size):
@@ -85,5 +83,4 @@ def covert_dataset_to_dataloader(dataset, sampler, batch_size):
     :return: A DataLoader that wraps the input Dataset.
     """
     sampler_initialized = sampler(dataset)
-    data_loader = DataLoader(dataset, sampler=sampler_initialized, batch_size=batch_size)
-    return data_loader
+    return DataLoader(dataset, sampler=sampler_initialized, batch_size=batch_size)

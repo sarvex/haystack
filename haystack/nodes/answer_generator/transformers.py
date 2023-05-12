@@ -150,17 +150,18 @@ class RAGenerator(BaseGenerator):
     # Copied cat_input_and_doc method from transformers.RagRetriever
     # Refer section 2.3 of https://arxiv.org/abs/2005.11401
     def _cat_input_and_doc(self, doc_title: str, doc_text: str, input_string: str, prefix: Optional[str]):
-        if doc_title.startswith('"'):
-            doc_title = doc_title[1:]
-        if doc_title.endswith('"'):
-            doc_title = doc_title[:-1]
+        doc_title = doc_title.removeprefix('"')
+        doc_title = doc_title.removesuffix('"')
         if prefix is None:
             prefix = ""
-        out = (
-            prefix + doc_title + self.model.config.title_sep + doc_text + self.model.config.doc_sep + input_string
+        return (
+            prefix
+            + doc_title
+            + self.model.config.title_sep
+            + doc_text
+            + self.model.config.doc_sep
+            + input_string
         ).replace("  ", " ")
-
-        return out
 
     # Copied postprocess_docs method from transformers.RagRetriever and modified
     def _get_contextualized_inputs(
@@ -230,7 +231,7 @@ class RAGenerator(BaseGenerator):
         ```
         """
         torch.set_grad_enabled(False)
-        if len(documents) == 0:
+        if not documents:
             raise AttributeError("generator need documents to predict the answer")
 
         top_k = top_k if top_k is not None else self.top_k
@@ -277,9 +278,7 @@ class RAGenerator(BaseGenerator):
 
         generated_answers = self.tokenizer.batch_decode(generator_ids, skip_special_tokens=True)
         answers = self._create_answers(generated_answers, documents)
-        result = {"query": query, "answers": answers}
-
-        return result
+        return {"query": query, "answers": answers}
 
 
 class Seq2SeqGenerator(BaseGenerator):
@@ -408,7 +407,7 @@ class Seq2SeqGenerator(BaseGenerator):
 
         """
         torch.set_grad_enabled(False)
-        if len(documents) == 0:
+        if not documents:
             raise AttributeError("generator needs documents to predict the answer")
 
         top_k = top_k if top_k is not None else self.top_k
@@ -441,7 +440,7 @@ class Seq2SeqGenerator(BaseGenerator):
             attention_mask=query_and_docs_encoded["attention_mask"],
             min_length=self.min_length,
             max_length=self.max_length,
-            do_sample=True if self.num_beams == 1 else False,
+            do_sample=self.num_beams == 1,
             early_stopping=True,
             num_beams=self.num_beams,
             temperature=1.0,
@@ -455,9 +454,7 @@ class Seq2SeqGenerator(BaseGenerator):
 
         generated_answers = self.tokenizer.batch_decode(generated_answers_encoded, skip_special_tokens=True)
         answers = self._create_answers(generated_answers, documents)
-        result = {"query": query, "answers": answers}
-
-        return result
+        return {"query": query, "answers": answers}
 
 
 class _BartEli5Converter:
@@ -478,6 +475,6 @@ class _BartEli5Converter:
         conditioned_doc = "<P> " + " <P> ".join([d.content for d in documents])
 
         # concatenate question and support document into BART input
-        query_and_docs = "question: {} context: {}".format(query, conditioned_doc)
+        query_and_docs = f"question: {query} context: {conditioned_doc}"
 
         return tokenizer([(query_and_docs, "A")], truncation=True, padding=True, return_tensors="pt")

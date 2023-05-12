@@ -18,7 +18,7 @@ from haystack.document_stores.utils import convert_date_to_rfc3339
 try:
     from weaviate import client, AuthClientPassword
     from weaviate import ObjectsBatchRequest
-except (ImportError, ModuleNotFoundError) as ie:
+except ImportError as ie:
     from haystack.utils.import_utils import _optional_component_not_installed
 
     _optional_component_not_installed(__name__, "weaviate", ie)
@@ -259,7 +259,7 @@ class WeaviateDocumentStore(BaseDocumentStore):
         if return_embedding and embedding:
             embedding = np.asarray(embedding, dtype=np.float32)
 
-        document = Document.from_dict(
+        return Document.from_dict(
             {
                 "id": id,
                 "content": content,
@@ -269,7 +269,6 @@ class WeaviateDocumentStore(BaseDocumentStore):
                 "embedding": embedding,
             }
         )
-        return document
 
     def _create_document_field_map(self) -> Dict:
         return {self.content_field: "content", self.embedding_field: "embedding"}
@@ -282,14 +281,19 @@ class WeaviateDocumentStore(BaseDocumentStore):
             raise NotImplementedError("WeaviateDocumentStore does not support headers.")
 
         index = self._sanitize_index_name(index) or self.index
-        document = None
-
         id = self._sanitize_id(id=id, index=index)
 
-        result = self.weaviate_client.data_object.get_by_id(id, with_vector=True)
-        if result:
-            document = self._convert_weaviate_result_to_document(result, return_embedding=True)
-        return document
+        return (
+            self._convert_weaviate_result_to_document(
+                result, return_embedding=True
+            )
+            if (
+                result := self.weaviate_client.data_object.get_by_id(
+                    id, with_vector=True
+                )
+            )
+            else None
+        )
 
     def get_documents_by_id(
         self,
@@ -309,8 +313,9 @@ class WeaviateDocumentStore(BaseDocumentStore):
         # TODO: better implementation with multiple where filters instead of chatty call below?
         for id in ids:
             id = self._sanitize_id(id=id, index=index)
-            result = self.weaviate_client.data_object.get_by_id(id, with_vector=True)
-            if result:
+            if result := self.weaviate_client.data_object.get_by_id(
+                id, with_vector=True
+            ):
                 document = self._convert_weaviate_result_to_document(result, return_embedding=True)
                 documents.append(document)
         return documents
@@ -403,7 +408,7 @@ class WeaviateDocumentStore(BaseDocumentStore):
         """
         Find the properties in the document that don't exist in the existing schema.
         """
-        return [item for item in doc.keys() if item not in cur_props]
+        return [item for item in doc if item not in cur_props]
 
     def write_documents(
         self,
@@ -485,7 +490,7 @@ class WeaviateDocumentStore(BaseDocumentStore):
 
                     # In order to have a flat structure in elastic + similar behaviour to the other DocumentStores,
                     # we "unnest" all value within "meta"
-                    if "meta" in _doc.keys():
+                    if "meta" in _doc:
                         for k, v in _doc["meta"].items():
                             _doc[k] = v
                         _doc.pop("meta")
@@ -499,10 +504,9 @@ class WeaviateDocumentStore(BaseDocumentStore):
                     # Converting content to JSON-string as Weaviate doesn't allow other nested list for tables
                     _doc["content"] = json.dumps(_doc["content"])
 
-                    # Check if additional properties are in the document, if so,
-                    # append the schema with all the additional properties
-                    missing_props = self._check_document(current_properties, _doc)
-                    if missing_props:
+                    if missing_props := self._check_document(
+                        current_properties, _doc
+                    ):
                         for property in missing_props:
                             self._update_schema(property, _doc[property], index)
                             current_properties.append(property)
@@ -539,9 +543,7 @@ class WeaviateDocumentStore(BaseDocumentStore):
 
         current_properties = self._get_current_properties(index)
 
-        # Check if the new metadata contains additional properties and append them to the schema
-        missing_props = self._check_document(current_properties, meta)
-        if missing_props:
+        if missing_props := self._check_document(current_properties, meta):
             for property in missing_props:
                 self._update_schema(property, meta[property], index)
                 current_properties.append(property)
@@ -580,7 +582,6 @@ class WeaviateDocumentStore(BaseDocumentStore):
             return 0
 
         index = self._sanitize_index_name(index) or self.index
-        doc_count = 0
         if filters:
             filter_dict = LogicalFilterClause.parse(filters).convert_to_weaviate()
             result = (
@@ -589,11 +590,11 @@ class WeaviateDocumentStore(BaseDocumentStore):
         else:
             result = self.weaviate_client.query.aggregate(index).with_fields("meta { count }").do()
 
-        if "data" in result:
-            if "Aggregate" in result.get("data"):
-                doc_count = result.get("data").get("Aggregate").get(index)[0]["meta"]["count"]
-
-        return doc_count
+        return (
+            result.get("data").get("Aggregate").get(index)[0]["meta"]["count"]
+            if "data" in result and "Aggregate" in result.get("data")
+            else 0
+        )
 
     def get_all_documents(
         self,
@@ -644,8 +645,7 @@ class WeaviateDocumentStore(BaseDocumentStore):
         result = self.get_all_documents_generator(
             index=index, filters=filters, return_embedding=return_embedding, batch_size=batch_size
         )
-        documents = list(result)
-        return documents
+        return list(result)
 
     def _get_all_documents_in_index(
         self,
@@ -671,12 +671,17 @@ class WeaviateDocumentStore(BaseDocumentStore):
         else:
             result = self.weaviate_client.query.get(class_name=index, properties=properties).do()
 
-        all_docs = {}
-        if result and "data" in result and "Get" in result.get("data"):
-            if result.get("data").get("Get").get(index):
-                all_docs = result.get("data").get("Get").get(index)
-
-        yield from all_docs
+        yield from result.get("data").get("Get").get(
+            index
+        ) if result and "data" in result and "Get" in result.get(
+            "data"
+        ) and result.get(
+            "data"
+        ).get(
+            "Get"
+        ).get(
+            index
+        ) else {}
 
     def get_all_documents_generator(
         self,
@@ -732,8 +737,9 @@ class WeaviateDocumentStore(BaseDocumentStore):
 
         results = self._get_all_documents_in_index(index=index, filters=filters, batch_size=batch_size)
         for result in results:
-            document = self._convert_weaviate_result_to_document(result, return_embedding=return_embedding)
-            yield document
+            yield self._convert_weaviate_result_to_document(
+                result, return_embedding=return_embedding
+            )
 
     def query(
         self,
@@ -840,9 +846,13 @@ class WeaviateDocumentStore(BaseDocumentStore):
             )
 
         results = []
-        if query_output and "data" in query_output and "Get" in query_output.get("data"):
-            if query_output.get("data").get("Get").get(index):
-                results = query_output.get("data").get("Get").get(index)
+        if (
+            query_output
+            and "data" in query_output
+            and "Get" in query_output.get("data")
+            and query_output.get("data").get("Get").get(index)
+        ):
+            results = query_output.get("data").get("Get").get(index)
 
         documents = []
         for result in results:
@@ -967,9 +977,13 @@ class WeaviateDocumentStore(BaseDocumentStore):
             )
 
         results = []
-        if query_output and "data" in query_output and "Get" in query_output.get("data"):
-            if query_output.get("data").get("Get").get(index):
-                results = query_output.get("data").get("Get").get(index)
+        if (
+            query_output
+            and "data" in query_output
+            and "Get" in query_output.get("data")
+            and query_output.get("data").get("Get").get(index)
+        ):
+            results = query_output.get("data").get("Get").get(index)
 
         documents = []
         for result in results:
@@ -1160,12 +1174,13 @@ class WeaviateDocumentStore(BaseDocumentStore):
         # create index if it doesn't exist yet
         self._create_schema_and_index_if_not_exist(index)
 
-        if not filters and not ids:
-            self.weaviate_client.schema.delete_class(index)
-            self._create_schema_and_index_if_not_exist(index)
-        else:
+        if filters or ids:
             docs_to_delete = self.get_all_documents(index, filters=filters)
             if ids:
                 docs_to_delete = [doc for doc in docs_to_delete if doc.id in ids]
             for doc in docs_to_delete:
                 self.weaviate_client.data_object.delete(doc.id)
+
+        else:
+            self.weaviate_client.schema.delete_class(index)
+            self._create_schema_and_index_if_not_exist(index)

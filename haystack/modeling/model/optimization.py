@@ -138,10 +138,10 @@ def initialize_optimizer(
 
     if (schedule_opts is not None) and (not isinstance(schedule_opts, dict)):
         raise TypeError(
-            "Parameter schedule_opts must be None or " "an instance of dict but was {}!".format(type(schedule_opts))
+            f"Parameter schedule_opts must be None or an instance of dict but was {type(schedule_opts)}!"
         )
 
-    num_train_optimization_steps = int(n_batches / grad_acc_steps) * n_epochs
+    num_train_optimization_steps = n_batches // grad_acc_steps * n_epochs
 
     # Use some defaults to simplify life of inexperienced users
     if optimizer_opts is None:
@@ -199,19 +199,21 @@ def _get_optim(model, opts: Dict):
     MlLogger.log_params({"optimizer_name": optimizer_name})
 
     weight_decay = opts.pop("weight_decay", None)
-    no_decay = opts.pop("no_decay", None)
-
-    if no_decay:
+    if no_decay := opts.pop("no_decay", None):
         optimizable_parameters = [
             {
                 "params": [
-                    p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay) and p.requires_grad
+                    p
+                    for n, p in model.named_parameters()
+                    if all(nd not in n for nd in no_decay) and p.requires_grad
                 ],
                 **opts,
             },
             {
                 "params": [
-                    p for n, p in model.named_parameters() if any(nd in n for nd in no_decay) and p.requires_grad
+                    p
+                    for n, p in model.named_parameters()
+                    if any(nd in n for nd in no_decay) and p.requires_grad
                 ],
                 "weight_decay": 0.0,
                 **opts,
@@ -270,7 +272,7 @@ def get_scheduler(optimizer, opts):
                 "CosineWarmup": "get_cosine_schedule_with_warmup",
                 "CosineWarmupWithRestarts": "get_cosine_with_hard_restarts_schedule_with_warmup",
             }
-            if schedule_name in scheduler_translations.keys():
+            if schedule_name in scheduler_translations:
                 schedule_name = scheduler_translations[schedule_name]
             # in contrast to torch, we actually get here a method and not a class
             sched_constructor = getattr(import_module("transformers.optimization"), schedule_name)

@@ -130,8 +130,7 @@ def add_is_impossible(squad_data: dict, json_file_path: Path):
     new_path = json_file_path.parent / Path(f"{json_file_path.stem}_impossible.json")
     squad_articles = list(squad_data["data"])  # create new list with this list although lists are inmutable :/
     for article in squad_articles:
-        for para_idx, paragraph in enumerate(article["paragraphs"]):
-
+        for paragraph in article["paragraphs"]:
             for question in paragraph["qas"]:
                 question["is_impossible"] = False
 
@@ -162,7 +161,7 @@ def has_is_impossible(squad_data: dict):
 def create_dpr_training_dataset(squad_data: dict, retriever: BaseRetriever, num_hard_negative_ctxs: int = 30):
     n_non_added_questions = 0
     n_questions = 0
-    for idx_article, article in enumerate(tqdm(squad_data, unit="article")):
+    for article in tqdm(squad_data, unit="article"):
         article_title = article.get("title", "")
         for paragraph in article["paragraphs"]:
             context = paragraph["context"]
@@ -181,16 +180,14 @@ def create_dpr_training_dataset(squad_data: dict, retriever: BaseRetriever, num_
                     )
                     n_non_added_questions += 1
                     continue
-                dict_DPR = {
+                n_questions += 1
+                yield {
                     "question": question["question"],
                     "answers": answers,
                     "positive_ctxs": positive_ctxs,
                     "negative_ctxs": [],
                     "hard_negative_ctxs": hard_negative_ctxs,
                 }
-                n_questions += 1
-                yield dict_DPR
-
     logger.info(f"Number of skipped questions: {n_non_added_questions}")
     logger.info(f"Number of added questions:   {n_questions}")
 
@@ -221,9 +218,11 @@ def get_hard_negative_contexts(retriever: BaseRetriever, question: str, answers:
     for retrieved_doc in retrieved_docs:
         retrieved_doc_id = retrieved_doc.meta.get("name", "")
         retrieved_doc_text = retrieved_doc.content
-        if any(answer.lower() in retrieved_doc_text.lower() for answer in answers):
-            continue
-        list_hard_neg_ctxs.append({"title": retrieved_doc_id, "text": retrieved_doc_text, "passage_id": ""})
+        if all(
+            answer.lower() not in retrieved_doc_text.lower()
+            for answer in answers
+        ):
+            list_hard_neg_ctxs.append({"title": retrieved_doc_id, "text": retrieved_doc_text, "passage_id": ""})
 
     return list_hard_neg_ctxs
 

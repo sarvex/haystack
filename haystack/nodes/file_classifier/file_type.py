@@ -46,7 +46,7 @@ class FileTypeClassifier(BaseComponent):
 
         for path in file_paths:
             if path.suffix != extension:
-                raise ValueError(f"Multiple file types are not allowed at once.")
+                raise ValueError("Multiple file types are not allowed at once.")
 
         return extension.lstrip(".")
 

@@ -62,7 +62,7 @@ def test_summarization_one_summary(summarizer):
 def test_summarization_pipeline(document_store, retriever, summarizer):
     document_store.write_documents(DOCS)
 
-    if isinstance(retriever, EmbeddingRetriever) or isinstance(retriever, DensePassageRetriever):
+    if isinstance(retriever, (EmbeddingRetriever, DensePassageRetriever)):
         document_store.update_embeddings(retriever=retriever)
 
     query = "Where is Eiffel Tower?"
@@ -83,7 +83,7 @@ def test_summarization_pipeline(document_store, retriever, summarizer):
 def test_summarization_pipeline_one_summary(document_store, retriever, summarizer):
     document_store.write_documents(SPLIT_DOCS)
 
-    if isinstance(retriever, EmbeddingRetriever) or isinstance(retriever, DensePassageRetriever):
+    if isinstance(retriever, (EmbeddingRetriever, DensePassageRetriever)):
         document_store.update_embeddings(retriever=retriever)
 
     query = "Where is Eiffel Tower?"

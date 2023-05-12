@@ -169,8 +169,10 @@ class InMemoryDocumentStore(BaseDocumentStore):
         index = index or self.label_index
         label_objects = [Label.from_dict(l) if isinstance(l, dict) else l for l in labels]
 
-        duplicate_ids: list = [label.id for label in self._get_duplicate_labels(label_objects, index=index)]
-        if len(duplicate_ids) > 0:
+        if duplicate_ids := [
+            label.id
+            for label in self._get_duplicate_labels(label_objects, index=index)
+        ]:
             logger.warning(
                 f"Duplicate Label IDs: Inserting a Label whose id already exists in this document store."
                 f" This will overwrite the old Label. Please make sure Label.id is a unique identifier of"
@@ -196,19 +198,17 @@ class InMemoryDocumentStore(BaseDocumentStore):
             raise NotImplementedError("InMemoryDocumentStore does not support headers.")
 
         index = index or self.index
-        documents = self.get_documents_by_id([id], index=index)
-        if documents:
+        if documents := self.get_documents_by_id([id], index=index):
             return documents[0]
         else:
             return None
 
-    def get_documents_by_id(self, ids: List[str], index: Optional[str] = None) -> List[Document]:  # type: ignore
+    def get_documents_by_id(self, ids: List[str], index: Optional[str] = None) -> List[Document]:    # type: ignore
         """
         Fetch documents by specifying a list of text id strings.
         """
         index = index or self.index
-        documents = [self.indexes[index][id] for id in ids]
-        return documents
+        return [self.indexes[index][id] for id in ids]
 
     def get_scores_torch(self, query_emb: np.ndarray, document_to_search: List[Document]) -> List[float]:
         """
@@ -223,10 +223,11 @@ class InMemoryDocumentStore(BaseDocumentStore):
 
         doc_embeds = np.array([doc.embedding for doc in document_to_search])
         doc_embeds = torch.as_tensor(doc_embeds, dtype=torch.float)
-        if len(doc_embeds.shape) == 1 and doc_embeds.shape[0] == 1:
-            doc_embeds = doc_embeds.unsqueeze(dim=0)
-        elif len(doc_embeds.shape) == 1 and doc_embeds.shape[0] == 0:
-            return []
+        if len(doc_embeds.shape) == 1:
+            if doc_embeds.shape[0] == 1:
+                doc_embeds = doc_embeds.unsqueeze(dim=0)
+            elif doc_embeds.shape[0] == 0:
+                return []
 
         if self.similarity == "cosine":
             # cosine similarity is just a normed dot product
@@ -262,10 +263,11 @@ class InMemoryDocumentStore(BaseDocumentStore):
             query_emb = np.expand_dims(query_emb, 0)
 
         doc_embeds = np.array([doc.embedding for doc in document_to_search])
-        if len(doc_embeds.shape) == 1 and doc_embeds.shape[0] == 1:
-            doc_embeds = doc_embeds.unsqueeze(dim=0)
-        elif len(doc_embeds.shape) == 1 and doc_embeds.shape[0] == 0:
-            return []
+        if len(doc_embeds.shape) == 1:
+            if doc_embeds.shape[0] == 1:
+                doc_embeds = doc_embeds.unsqueeze(dim=0)
+            elif doc_embeds.shape[0] == 0:
+                return []
 
         if self.similarity == "cosine":
             # cosine similarity is just a normed dot product
@@ -277,17 +279,14 @@ class InMemoryDocumentStore(BaseDocumentStore):
             doc_embeds_norms = np.expand_dims(doc_embeds_norms, 1)
             doc_embeds = np.divide(doc_embeds, doc_embeds_norms)
 
-        scores = np.dot(query_emb, doc_embeds.T)[0].tolist()
-
-        return scores
+        return np.dot(query_emb, doc_embeds.T)[0].tolist()
 
     def get_scores(self, query_emb: np.ndarray, document_to_search: List[Document]) -> List[float]:
-        if self.main_device.type == "cuda":
-            scores = self.get_scores_torch(query_emb, document_to_search)
-        else:
-            scores = self.get_scores_numpy(query_emb, document_to_search)
-
-        return scores
+        return (
+            self.get_scores_torch(query_emb, document_to_search)
+            if self.main_device.type == "cuda"
+            else self.get_scores_numpy(query_emb, document_to_search)
+        )
 
     def query_by_embedding(
         self,
@@ -390,7 +389,11 @@ class InMemoryDocumentStore(BaseDocumentStore):
             new_document.score = self.finalize_raw_score(score, self.similarity)
             candidate_docs.append(new_document)
 
-        return sorted(candidate_docs, key=lambda x: x.score if x.score is not None else 0.0, reverse=True)[0:top_k]
+        return sorted(
+            candidate_docs,
+            key=lambda x: x.score if x.score is not None else 0.0,
+            reverse=True,
+        )[:top_k]
 
     def update_embeddings(
         self,
@@ -492,8 +495,7 @@ class InMemoryDocumentStore(BaseDocumentStore):
         Return the count of embeddings in the document store.
         """
         documents = self.get_all_documents(filters=filters, index=index)
-        embedding_count = sum(doc.embedding is not None for doc in documents)
-        return embedding_count
+        return sum(doc.embedding is not None for doc in documents)
 
     def get_label_count(self, index: Optional[str] = None, headers: Optional[Dict[str, str]] = None) -> int:
         """
@@ -526,11 +528,9 @@ class InMemoryDocumentStore(BaseDocumentStore):
             documents = [doc for doc in documents if doc.embedding is None]
         if filters:
             parsed_filter = LogicalFilterClause.parse(filters)
-            filtered_documents = list(filter(lambda doc: parsed_filter.evaluate(doc.meta), documents))
+            return list(filter(lambda doc: parsed_filter.evaluate(doc.meta), documents))
         else:
-            filtered_documents = documents
-
-        return filtered_documents
+            return documents
 
     def get_all_documents(
         self,
@@ -577,8 +577,7 @@ class InMemoryDocumentStore(BaseDocumentStore):
         result = self.get_all_documents_generator(
             index=index, filters=filters, return_embedding=return_embedding, batch_size=batch_size
         )
-        documents = list(result)
-        return documents
+        return list(result)
 
     def get_all_documents_generator(
         self,
@@ -623,8 +622,9 @@ class InMemoryDocumentStore(BaseDocumentStore):
         if headers:
             raise NotImplementedError("InMemoryDocumentStore does not support headers.")
 
-        result = self._query(index=index, filters=filters, return_embedding=return_embedding)
-        yield from result
+        yield from self._query(
+            index=index, filters=filters, return_embedding=return_embedding
+        )
 
     def get_all_labels(
         self,
@@ -644,11 +644,7 @@ class InMemoryDocumentStore(BaseDocumentStore):
             result = []
             for label in self.indexes[index].values():
                 label_dict = label.to_dict()
-                is_hit = True
-                for key, values in filters.items():
-                    if label_dict[key] not in values:
-                        is_hit = False
-                        break
+                is_hit = all(label_dict[key] in values for key, values in filters.items())
                 if is_hit:
                     result.append(label)
         else:

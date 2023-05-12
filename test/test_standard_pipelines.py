@@ -286,7 +286,10 @@ def test_join_with_rrf(document_store_dot_product_with_docs):
         0.031009615384615385,
     ]
 
-    assert all([doc.score == expected_scores[idx] for idx, doc in enumerate(results["documents"])])
+    assert all(
+        doc.score == expected_scores[idx]
+        for idx, doc in enumerate(results["documents"])
+    )
 
 
 def test_query_keyword_statement_classifier():

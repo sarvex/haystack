@@ -14,7 +14,7 @@ try:
     from pymilvus import FieldSchema, CollectionSchema, Collection, connections, utility
     from pymilvus.client.abstract import QueryResult
     from pymilvus.client.types import DataType
-except (ImportError, ModuleNotFoundError) as ie:
+except ImportError as ie:
     from haystack.utils.import_utils import _optional_component_not_installed
 
     _optional_component_not_installed(__name__, "milvus2", ie)
@@ -217,7 +217,7 @@ class Milvus2DocumentStore(SQLDocumentStore):
             ]
 
             for field in custom_fields:
-                if field.name == self.id_field or field.name == self.embedding_field:
+                if field.name in [self.id_field, self.embedding_field]:
                     logger.warning(f"Skipping `{field.name}` as it is similar to `id_field` or `embedding_field`")
                 else:
                     fields.append(field)
@@ -286,7 +286,7 @@ class Milvus2DocumentStore(SQLDocumentStore):
 
         document_objects = [Document.from_dict(d, field_map=field_map) if isinstance(d, dict) else d for d in documents]
         document_objects = self._handle_duplicate_documents(document_objects, duplicate_documents)
-        add_vectors = False if document_objects[0].embedding is None else True
+        add_vectors = document_objects[0].embedding is not None
 
         batched_documents = get_batches_from_generator(document_objects, batch_size)
         with tqdm(total=len(document_objects), disable=not self.progress_bar) as progress_bar:
@@ -325,8 +325,8 @@ class Milvus2DocumentStore(SQLDocumentStore):
                 docs_to_write_in_sql = []
 
                 for idx, doc in enumerate(document_batch):
-                    meta = doc.meta
                     if add_vectors and mutation_result is not None:
+                        meta = doc.meta
                         meta["vector_id"] = str(mutation_result.primary_keys[idx])
                     docs_to_write_in_sql.append(doc)
 
@@ -380,8 +380,8 @@ class Milvus2DocumentStore(SQLDocumentStore):
         )
         batched_documents = get_batches_from_generator(result, batch_size)
         with tqdm(
-            total=document_count, disable=not self.progress_bar, position=0, unit=" docs", desc="Updating Embedding"
-        ) as progress_bar:
+                total=document_count, disable=not self.progress_bar, position=0, unit=" docs", desc="Updating Embedding"
+            ) as progress_bar:
             for document_batch in batched_documents:
                 self._delete_vector_ids_from_milvus(documents=document_batch, index=index)
 
@@ -393,10 +393,12 @@ class Milvus2DocumentStore(SQLDocumentStore):
 
                 mutation_result = self.collection.insert([embeddings_list])
 
-                vector_id_map = {}
-                for vector_id, doc in zip(mutation_result.primary_keys, document_batch):
-                    vector_id_map[doc.id] = str(vector_id)
-
+                vector_id_map = {
+                    doc.id: str(vector_id)
+                    for vector_id, doc in zip(
+                        mutation_result.primary_keys, document_batch
+                    )
+                }
                 self.update_vector_ids(vector_id_map, index=index)
                 progress_bar.set_description_str("Documents Processed")
                 progress_bar.update(batch_size)
@@ -494,7 +496,7 @@ class Milvus2DocumentStore(SQLDocumentStore):
                 batch.append(existing_docs)
                 if len(batch) == batch_size:
                     self._delete_vector_ids_from_milvus(documents=batch, index=index)
-            if len(batch) != 0:
+            if batch:
                 self._delete_vector_ids_from_milvus(documents=batch, index=index)
         else:
             self.collection.drop()
@@ -561,8 +563,7 @@ class Milvus2DocumentStore(SQLDocumentStore):
         result = self.get_all_documents_generator(
             index=index, filters=filters, return_embedding=return_embedding, batch_size=batch_size
         )
-        documents = list(result)
-        return documents
+        return list(result)
 
     def get_document_by_id(
         self, id: str, index: Optional[str] = None, headers: Optional[Dict[str, str]] = None
@@ -578,8 +579,7 @@ class Milvus2DocumentStore(SQLDocumentStore):
             raise NotImplementedError("Milvus2DocumentStore does not support headers.")
 
         documents = self.get_documents_by_id([id], index)
-        document = documents[0] if documents else None
-        return document
+        return documents[0] if documents else None
 
     def get_documents_by_id(
         self,
@@ -608,12 +608,12 @@ class Milvus2DocumentStore(SQLDocumentStore):
 
     def _populate_embeddings_to_docs(self, docs: List[Document], index: Optional[str] = None):
         index = index or self.index
-        docs_with_vector_ids = []
-        for doc in docs:
-            if doc.meta and doc.meta.get("vector_id") is not None:
-                docs_with_vector_ids.append(doc)
-
-        if len(docs_with_vector_ids) == 0:
+        docs_with_vector_ids = [
+            doc
+            for doc in docs
+            if doc.meta and doc.meta.get("vector_id") is not None
+        ]
+        if not docs_with_vector_ids:
             return
 
         ids = []
@@ -622,7 +622,7 @@ class Milvus2DocumentStore(SQLDocumentStore):
         for doc in docs_with_vector_ids:
             vector_id: str = doc.meta["vector_id"]  # type: ignore
             # vector_id is always a string, but it isn't part of type hint
-            ids.append(str(vector_id))
+            ids.append(vector_id)
             vector_id_map[int(vector_id)] = doc
 
         search_result: QueryResult = self.collection.query(
@@ -639,12 +639,13 @@ class Milvus2DocumentStore(SQLDocumentStore):
     ):
         index = index or self.index
         if ids is None:
-            ids = []
             if documents is None:
                 raise ValueError("You must either specify documents or ids to delete.")
-            for doc in documents:
-                if "vector_id" in doc.meta:
-                    ids.append(str(doc.meta["vector_id"]))
+            ids = [
+                str(doc.meta["vector_id"])
+                for doc in documents
+                if "vector_id" in doc.meta
+            ]
         else:
             docs = super().get_documents_by_id(ids=ids, index=index)
             ids = [doc.meta["vector_id"] for doc in docs if "vector_id" in doc.meta]

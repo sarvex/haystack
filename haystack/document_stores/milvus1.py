@@ -12,7 +12,7 @@ from scipy.special import expit
 try:
     from milvus import IndexType, MetricType, Milvus, Status
     from haystack.document_stores.sql import SQLDocumentStore
-except (ImportError, ModuleNotFoundError) as ie:
+except ImportError as ie:
     from haystack.utils.import_utils import _optional_component_not_installed
 
     _optional_component_not_installed(__name__, "milvus", ie)
@@ -139,7 +139,7 @@ class Milvus1DocumentStore(SQLDocumentStore):
 
         self.index_file_size = index_file_size
 
-        if similarity in ("dot_product", "cosine"):
+        if similarity in {"dot_product", "cosine"}:
             self.metric_type = MetricType.IP
             self.similarity = similarity
         elif similarity == "l2":
@@ -243,7 +243,7 @@ class Milvus1DocumentStore(SQLDocumentStore):
         document_objects = self._handle_duplicate_documents(
             documents=document_objects, index=index, duplicate_documents=duplicate_documents
         )
-        add_vectors = False if document_objects[0].embedding is None else True
+        add_vectors = document_objects[0].embedding is not None
 
         batched_documents = get_batches_from_generator(document_objects, batch_size)
         with tqdm(total=len(document_objects), disable=not self.progress_bar) as progress_bar:
@@ -282,8 +282,8 @@ class Milvus1DocumentStore(SQLDocumentStore):
 
                 docs_to_write_in_sql = []
                 for idx, doc in enumerate(document_batch):
-                    meta = doc.meta
                     if add_vectors:
+                        meta = doc.meta
                         meta["vector_id"] = vector_ids[idx]
                     docs_to_write_in_sql.append(doc)
 
@@ -344,8 +344,8 @@ class Milvus1DocumentStore(SQLDocumentStore):
         )
         batched_documents = get_batches_from_generator(result, batch_size)
         with tqdm(
-            total=document_count, disable=not self.progress_bar, position=0, unit=" docs", desc="Updating Embedding"
-        ) as progress_bar:
+                total=document_count, disable=not self.progress_bar, position=0, unit=" docs", desc="Updating Embedding"
+            ) as progress_bar:
             for document_batch in batched_documents:
                 self._delete_vector_ids_from_milvus(documents=document_batch, index=index)
 
@@ -361,10 +361,10 @@ class Milvus1DocumentStore(SQLDocumentStore):
                 if status.code != Status.SUCCESS:
                     raise RuntimeError(f"Vector embedding insertion failed: {status}")
 
-                vector_id_map = {}
-                for vector_id, doc in zip(vector_ids, document_batch):
-                    vector_id_map[doc.id] = vector_id
-
+                vector_id_map = {
+                    doc.id: vector_id
+                    for vector_id, doc in zip(vector_ids, document_batch)
+                }
                 self.update_vector_ids(vector_id_map, index=index)
                 progress_bar.set_description_str("Documents Processed")
                 progress_bar.update(batch_size)
@@ -564,8 +564,7 @@ class Milvus1DocumentStore(SQLDocumentStore):
         result = self.get_all_documents_generator(
             index=index, filters=filters, return_embedding=return_embedding, batch_size=batch_size
         )
-        documents = list(result)
-        return documents
+        return list(result)
 
     def get_document_by_id(
         self, id: str, index: Optional[str] = None, headers: Optional[Dict[str, str]] = None
@@ -581,8 +580,7 @@ class Milvus1DocumentStore(SQLDocumentStore):
             raise NotImplementedError("MilvusDocumentStore does not support headers.")
 
         documents = self.get_documents_by_id([id], index)
-        document = documents[0] if documents else None
-        return document
+        return documents[0] if documents else None
 
     def get_documents_by_id(
         self,
@@ -611,12 +609,12 @@ class Milvus1DocumentStore(SQLDocumentStore):
 
     def _populate_embeddings_to_docs(self, docs: List[Document], index: Optional[str] = None):
         index = index or self.index
-        docs_with_vector_ids = []
-        for doc in docs:
-            if doc.meta and doc.meta.get("vector_id") is not None:
-                docs_with_vector_ids.append(doc)
-
-        if len(docs_with_vector_ids) == 0:
+        docs_with_vector_ids = [
+            doc
+            for doc in docs
+            if doc.meta and doc.meta.get("vector_id") is not None
+        ]
+        if not docs_with_vector_ids:
             return
 
         ids = [int(doc.meta.get("vector_id")) for doc in docs_with_vector_ids]  # type: ignore
@@ -629,11 +627,11 @@ class Milvus1DocumentStore(SQLDocumentStore):
 
     def _delete_vector_ids_from_milvus(self, documents: List[Document], index: Optional[str] = None):
         index = index or self.index
-        existing_vector_ids = []
-        for doc in documents:
-            if "vector_id" in doc.meta:
-                existing_vector_ids.append(int(doc.meta["vector_id"]))
-        if len(existing_vector_ids) > 0:
+        if existing_vector_ids := [
+            int(doc.meta["vector_id"])
+            for doc in documents
+            if "vector_id" in doc.meta
+        ]:
             status = self.milvus_server.delete_entity_by_id(collection_name=index, id_array=existing_vector_ids)
             if status.code != Status.SUCCESS:
                 raise RuntimeError(f"Existing vector ids deletion failed: {status}")
@@ -649,12 +647,12 @@ class Milvus1DocumentStore(SQLDocumentStore):
         index = index or self.index
         status, collection_info = self.milvus_server.get_collection_stats(collection_name=index)
         if not status.OK():
-            logger.info(f"Failed fetch stats from store ...")
-            return list()
+            logger.info("Failed fetch stats from store ...")
+            return []
 
         logger.debug(f"collection_info = {collection_info}")
 
-        ids = list()
+        ids = []
         partition_list = collection_info["partitions"]
         for partition in partition_list:
             segment_list = partition["segments"]
@@ -666,14 +664,14 @@ class Milvus1DocumentStore(SQLDocumentStore):
                 logger.debug(f"{status}: segment {segment_name} has {len(id_list)} vectors ...")
                 ids.extend(id_list)
 
-        if len(ids) == 0:
-            logger.info(f"No documents in the store ...")
-            return list()
+        if not ids:
+            logger.info("No documents in the store ...")
+            return []
 
         status, vectors = self.milvus_server.get_entity_by_id(collection_name=index, ids=ids)
         if not status.OK():
             logger.info(f"Failed fetch document for ids {ids} from store ...")
-            return list()
+            return []
 
         return vectors
 

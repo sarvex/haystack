@@ -66,12 +66,14 @@ class BaseReader(BaseComponent):
         # Add corresponding document_name and more meta data, if the answer contains the document_id
         if answer.meta is None:
             answer.meta = {}
-        # get meta from doc
-        meta_from_doc = {}
-        for doc in documents:
-            if doc.id == answer.document_id:
-                meta_from_doc = deepcopy(doc.meta)
-                break
+        meta_from_doc = next(
+            (
+                deepcopy(doc.meta)
+                for doc in documents
+                if doc.id == answer.document_id
+            ),
+            {},
+        )
         # append to "own" meta
         answer.meta.update(meta_from_doc)
         return answer

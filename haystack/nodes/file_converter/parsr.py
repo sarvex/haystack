@@ -144,8 +144,9 @@ class ParsrConverter(BaseConverter):
             for page_idx, page in enumerate(parsr_output["pages"]):
                 for elem_idx, element in enumerate(page["elements"]):
                     if element["type"] in ["paragraph", "heading", "table-of-contents"]:
-                        current_paragraph = self._convert_text_element(element)
-                        if current_paragraph:
+                        if current_paragraph := self._convert_text_element(
+                            element
+                        ):
                             text += f"{current_paragraph}\n\n"
 
                     elif element["type"] == "table":
@@ -160,16 +161,13 @@ class ParsrConverter(BaseConverter):
                     f"been decoded in the correct text format."
                 )
 
-        docs = tables + [{"content": text.strip(), "content_type": "text", "meta": meta}]
-        return docs
+        return tables + [
+            {"content": text.strip(), "content_type": "text", "meta": meta}
+        ]
 
     def _get_paragraph_string(self, paragraph: Dict[str, Any]) -> str:
-        current_lines = []
-        for line in paragraph["content"]:
-            current_lines.append(self._get_line_string(line))
-        current_paragraph = "\n".join(current_lines)
-
-        return current_paragraph
+        current_lines = [self._get_line_string(line) for line in paragraph["content"]]
+        return "\n".join(current_lines)
 
     def _get_line_string(self, line: Dict[str, Any]) -> str:
         return " ".join([word["content"] for word in line["content"]])
@@ -183,11 +181,13 @@ class ParsrConverter(BaseConverter):
             if self.remove_table_of_contents:
                 return ""
             else:
-                current_paragraph = "\n".join([self._get_paragraph_string(elem) for elem in element["content"]])
-                return current_paragraph
-
-        current_paragraph = self._get_paragraph_string(element)
-        return current_paragraph
+                return "\n".join(
+                    [
+                        self._get_paragraph_string(elem)
+                        for elem in element["content"]
+                    ]
+                )
+        return self._get_paragraph_string(element)
 
     def _convert_table_element(
         self,
@@ -200,7 +200,7 @@ class ParsrConverter(BaseConverter):
 
         row_idx_start = 0
         caption = ""
-        number_of_columns = max([len(row["content"]) for row in element["content"]])
+        number_of_columns = max(len(row["content"]) for row in element["content"])
         number_of_rows = len(element["content"])
         table_list = [[""] * number_of_columns for _ in range(number_of_rows)]
 
@@ -235,16 +235,20 @@ class ParsrConverter(BaseConverter):
                         # Skip header and footer elements if remove_page_header/footer is set to True
                         continue
                     for line in elem["content"]:
-                        if cur_page_idx < page_idx:
+                        if (
+                            cur_page_idx >= page_idx
+                            and cur_page_idx == page_idx
+                            and cur_elem_index < elem_idx
+                            or cur_page_idx < page_idx
+                        ):
                             preceding_lines.append(line)
-                        elif cur_page_idx == page_idx:
-                            if cur_elem_index < elem_idx:
-                                preceding_lines.append(line)
-                            elif cur_elem_index > elem_idx:
-                                following_lines.append(line)
-                        elif cur_page_idx > page_idx:
+                        elif (
+                            cur_page_idx == page_idx
+                            and cur_elem_index > elem_idx
+                            or cur_page_idx != page_idx
+                            and cur_page_idx > page_idx
+                        ):
                             following_lines.append(line)
-
         preceding_context = (
             "\n".join([self._get_line_string(line) for line in preceding_lines[-self.preceding_context_len :]])
             + f"\n\n{caption}"

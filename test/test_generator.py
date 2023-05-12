@@ -67,10 +67,10 @@ def test_generator_pipeline(document_store, retriever, rag_generator):
 @pytest.mark.parametrize("retriever", ["retribert"], indirect=True)
 @pytest.mark.embedding_dim(128)
 def test_lfqa_pipeline(document_store, retriever, eli5_generator):
-    # reuse existing DOCS but regenerate embeddings with retribert
-    docs: List[Document] = []
-    for idx, d in enumerate(DOCS_WITH_EMBEDDINGS):
-        docs.append(Document(d.content, str(idx)))
+    docs: List[Document] = [
+        Document(d.content, str(idx))
+        for idx, d in enumerate(DOCS_WITH_EMBEDDINGS)
+    ]
     document_store.write_documents(docs)
     document_store.update_embeddings(retriever)
     query = "Tell me about Berlin?"
@@ -87,10 +87,10 @@ def test_lfqa_pipeline(document_store, retriever, eli5_generator):
 @pytest.mark.parametrize("retriever", ["retribert"], indirect=True)
 @pytest.mark.embedding_dim(128)
 def test_lfqa_pipeline_unknown_converter(document_store, retriever):
-    # reuse existing DOCS but regenerate embeddings with retribert
-    docs: List[Document] = []
-    for idx, d in enumerate(DOCS_WITH_EMBEDDINGS):
-        docs.append(Document(d.content, str(idx)))
+    docs: List[Document] = [
+        Document(d.content, str(idx))
+        for idx, d in enumerate(DOCS_WITH_EMBEDDINGS)
+    ]
     document_store.write_documents(docs)
     document_store.update_embeddings(retriever)
     seq2seq = Seq2SeqGenerator(model_name_or_path="patrickvonplaten/t5-tiny-random")
@@ -109,10 +109,10 @@ def test_lfqa_pipeline_unknown_converter(document_store, retriever):
 @pytest.mark.parametrize("retriever", ["retribert"], indirect=True)
 @pytest.mark.embedding_dim(128)
 def test_lfqa_pipeline_invalid_converter(document_store, retriever):
-    # reuse existing DOCS but regenerate embeddings with retribert
-    docs: List[Document] = []
-    for idx, d in enumerate(DOCS_WITH_EMBEDDINGS):
-        docs.append(Document(d.content, str(idx)))
+    docs: List[Document] = [
+        Document(d.content, str(idx))
+        for idx, d in enumerate(DOCS_WITH_EMBEDDINGS)
+    ]
     document_store.write_documents(docs)
     document_store.update_embeddings(retriever)
 

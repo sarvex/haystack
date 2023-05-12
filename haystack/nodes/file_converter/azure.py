@@ -127,9 +127,7 @@ class AzureConverter(BaseConverter):
             with open(file_path.with_suffix(".json"), "w") as json_file:
                 json.dump(result.to_dict(), json_file, indent=2)
 
-        docs = self._convert_tables_and_text(result, meta, valid_languages, file_path)
-
-        return docs
+        return self._convert_tables_and_text(result, meta, valid_languages, file_path)
 
     def convert_azure_json(
         self,
@@ -156,9 +154,9 @@ class AzureConverter(BaseConverter):
             azure_result = json.load(azure_file)
             azure_result = AnalyzeResult.from_dict(azure_result)
 
-        docs = self._convert_tables_and_text(azure_result, meta, valid_languages, file_path)
-
-        return docs
+        return self._convert_tables_and_text(
+            azure_result, meta, valid_languages, file_path
+        )
 
     def _convert_tables_and_text(
         self,
@@ -264,12 +262,12 @@ class AzureConverter(BaseConverter):
         for page in result.pages:
             tables_on_page = table_spans_by_page[page.page_number]
             for line in page.lines:
-                in_table = False
-                # Check if line is part of a table
-                for table in tables_on_page:
-                    if table.offset <= line.spans[0].offset <= table.offset + table.length:
-                        in_table = True
-                        break
+                in_table = any(
+                    table.offset
+                    <= line.spans[0].offset
+                    <= table.offset + table.length
+                    for table in tables_on_page
+                )
                 if in_table:
                     continue
                 text += f"{line.content}\n"

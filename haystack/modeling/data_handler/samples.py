@@ -28,12 +28,11 @@ class Sample:
     def __str__(self):
 
         if self.clear_text:
-            clear_text_str = "\n \t".join([k + ": " + str(v) for k, v in self.clear_text.items()])
+            clear_text_str = "\n \t".join(
+                [f"{k}: {str(v)}" for k, v in self.clear_text.items()]
+            )
             if len(clear_text_str) > 3000:
-                clear_text_str = (
-                    clear_text_str[:3_000] + f"\nTHE REST IS TOO LONG TO DISPLAY. "
-                    f"Remaining chars :{len(clear_text_str)-3_000}"
-                )
+                clear_text_str = f"{clear_text_str[:3000]}\nTHE REST IS TOO LONG TO DISPLAY. Remaining chars :{len(clear_text_str) - 3000}"
         else:
             clear_text_str = "None"
 
@@ -42,28 +41,19 @@ class Sample:
                 features = self.features[0]
             else:
                 features = self.features
-            feature_str = "\n \t".join([k + ": " + str(v) for k, v in features.items()])
+            feature_str = "\n \t".join([f"{k}: {str(v)}" for k, v in features.items()])
         else:
             feature_str = "None"
 
         if self.tokenized:
-            tokenized_str = "\n \t".join([k + ": " + str(v) for k, v in self.tokenized.items()])
+            tokenized_str = "\n \t".join(
+                [f"{k}: {str(v)}" for k, v in self.tokenized.items()]
+            )
             if len(tokenized_str) > 3000:
-                tokenized_str = (
-                    tokenized_str[:3_000] + f"\nTHE REST IS TOO LONG TO DISPLAY. "
-                    f"Remaining chars: {len(tokenized_str)-3_000}"
-                )
+                tokenized_str = f"{tokenized_str[:3000]}\nTHE REST IS TOO LONG TO DISPLAY. Remaining chars: {len(tokenized_str) - 3000}"
         else:
             tokenized_str = "None"
-        s = (
-            f"\n{SAMPLE}\n"
-            f"ID: {self.id}\n"
-            f"Clear Text: \n \t{clear_text_str}\n"
-            f"Tokenized: \n \t{tokenized_str}\n"
-            f"Features: \n \t{feature_str}\n"
-            "_____________________________________________________"
-        )
-        return s
+        return f"\n{SAMPLE}\nID: {self.id}\nClear Text: \n \t{clear_text_str}\nTokenized: \n \t{tokenized_str}\nFeatures: \n \t{feature_str}\n_____________________________________________________"
 
 
 class SampleBasket:
@@ -170,22 +160,21 @@ def get_passage_offsets(doc_offsets, doc_stride, passage_len_t, doc_text):
 def offset_to_token_idx(token_offsets, ch_idx) -> Optional[int]:
     """Returns the idx of the token at the given character idx"""
     n_tokens = len(token_offsets)
-    for i in range(n_tokens):
-        if (i + 1 == n_tokens) or (token_offsets[i] <= ch_idx < token_offsets[i + 1]):
-            return i
-    return None
+    return next(
+        (
+            i
+            for i in range(n_tokens)
+            if (i + 1 == n_tokens)
+            or (token_offsets[i] <= ch_idx < token_offsets[i + 1])
+        ),
+        None,
+    )
 
 
 def offset_to_token_idx_vecorized(token_offsets, ch_idx):
     """Returns the idx of the token at the given character idx"""
-    # case ch_idx is at end of tokens
-    if ch_idx >= np.max(token_offsets):
-        # TODO check "+ 1" (it is needed for making end indices compliant with old offset_to_token_idx() function)
-        # check whether end token is incluse or exclusive
-        idx = np.argmax(token_offsets) + 1
-    # looking for the first occurence of token_offsets larger than ch_idx and taking one position to the left.
-    # This is needed to overcome n special_tokens at start of sequence
-    # and failsafe matching (the character start might not always coincide with a token offset, e.g. when starting at whitespace)
-    else:
-        idx = np.argmax(token_offsets > ch_idx) - 1
-    return idx
+    return (
+        np.argmax(token_offsets) + 1
+        if ch_idx >= np.max(token_offsets)
+        else np.argmax(token_offsets > ch_idx) - 1
+    )

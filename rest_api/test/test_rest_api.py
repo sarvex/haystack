@@ -85,7 +85,7 @@ def test_get_documents(populated_client: TestClient):
     assert "sample_pdf_1.pdf" in names
     assert "sample_pdf_2.pdf" in names
     meta_keys = [doc["meta"]["meta_key"] for doc in response_json]
-    assert all("meta_value" == meta_key for meta_key in meta_keys)
+    assert all(meta_key == "meta_value" for meta_key in meta_keys)
 
 
 def test_delete_documents(populated_client: TestClient):

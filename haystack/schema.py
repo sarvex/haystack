@@ -89,7 +89,7 @@ class Document:
         """
 
         if content is None:
-            raise ValueError(f"Can't create 'Document': Mandatory 'content' field is None")
+            raise ValueError("Can't create 'Document': Mandatory 'content' field is None")
 
         self.content = content
         self.content_type = content_type
@@ -98,21 +98,19 @@ class Document:
 
         allowed_hash_key_attributes = ["content", "content_type", "score", "meta", "embedding"]
 
-        if id_hash_keys is not None:
-            if not set(id_hash_keys) <= set(allowed_hash_key_attributes):  # type: ignore
-                raise ValueError(
-                    f"You passed custom strings {id_hash_keys} to id_hash_keys which is deprecated. Supply instead a list of Document's attribute names that the id should be based on (e.g. {allowed_hash_key_attributes}). See https://github.com/deepset-ai/haystack/pull/1910 for details)"
-                )
+        if id_hash_keys is not None and not set(id_hash_keys) <= set(
+            allowed_hash_key_attributes
+        ):
+            raise ValueError(
+                f"You passed custom strings {id_hash_keys} to id_hash_keys which is deprecated. Supply instead a list of Document's attribute names that the id should be based on (e.g. {allowed_hash_key_attributes}). See https://github.com/deepset-ai/haystack/pull/1910 for details)"
+            )
 
         if embedding is not None:
             embedding = np.asarray(embedding)
         self.embedding = embedding
 
         # Create a unique ID (either new one, or one from user input)
-        if id:
-            self.id: str = str(id)
-        else:
-            self.id: str = self._get_id(id_hash_keys=id_hash_keys)
+        self.id: str = str(id) if id else self._get_id(id_hash_keys=id_hash_keys)
 
     def _get_id(self, id_hash_keys: Optional[List[str]] = None):
         """
@@ -125,16 +123,14 @@ class Document:
         if id_hash_keys is None:
             return "{:02x}".format(mmh3.hash128(str(self.content), signed=False))
 
-        final_hash_key = ""
-        for attr in id_hash_keys:
-            final_hash_key += ":" + str(getattr(self, attr))
-
-        if final_hash_key == "":
+        if final_hash_key := "".join(
+            f":{str(getattr(self, attr))}" for attr in id_hash_keys
+        ):
+            return "{:02x}".format(mmh3.hash128(final_hash_key, signed=False))
+        else:
             raise ValueError(
-                f"Cant't create 'Document': 'id_hash_keys' must contain at least one of ['content', 'meta']"
+                "Cant't create 'Document': 'id_hash_keys' must contain at least one of ['content', 'meta']"
             )
-
-        return "{:02x}".format(mmh3.hash128(final_hash_key, signed=False))
 
     def to_dict(self, field_map={}) -> Dict:
         """
@@ -152,10 +148,12 @@ class Document:
         inv_field_map = {v: k for k, v in field_map.items()}
         _doc: Dict[str, str] = {}
         for k, v in self.__dict__.items():
-            if k == "content":
-                # Convert pd.DataFrame to list of rows for serialization
-                if self.content_type == "table" and isinstance(self.content, pd.DataFrame):
-                    v = [self.content.columns.tolist()] + self.content.values.tolist()
+            if (
+                k == "content"
+                and self.content_type == "table"
+                and isinstance(self.content, pd.DataFrame)
+            ):
+                v = [self.content.columns.tolist()] + self.content.values.tolist()
             k = k if k not in inv_field_map else inv_field_map[k]
             _doc[k] = v
         return _doc
@@ -202,8 +200,7 @@ class Document:
 
     def to_json(self, field_map={}) -> str:
         d = self.to_dict(field_map=field_map)
-        j = json.dumps(d, cls=NumpyEncoder)
-        return j
+        return json.dumps(d, cls=NumpyEncoder)
 
     @classmethod
     def from_json(cls, data: str, field_map={}):
@@ -388,11 +385,7 @@ class Label:
         """
 
         # Create a unique ID (either new one, or one from user input)
-        if id:
-            self.id = str(id)
-        else:
-            self.id = str(uuid4())
-
+        self.id = str(id) if id else str(uuid4())
         if created_at is None:
             created_at = time.strftime("%Y-%m-%d %H:%M:%S")
         self.created_at = created_at
@@ -429,10 +422,7 @@ class Label:
         # TODO autofill answer.document_id if Document is provided
 
         self.pipeline_id = pipeline_id
-        if not meta:
-            self.meta = {}
-        else:
-            self.meta = meta
+        self.meta = {} if not meta else meta
         self.filters = filters
 
     def to_dict(self):
@@ -543,12 +533,15 @@ class MultiLabel:
             self.gold_offsets_in_contexts = []
             for answer in answered:
                 if answer.offsets_in_document is not None:
-                    for span in answer.offsets_in_document:
-                        self.gold_offsets_in_documents.append({"start": span.start, "end": span.end})
+                    self.gold_offsets_in_documents.extend(
+                        {"start": span.start, "end": span.end}
+                        for span in answer.offsets_in_document
+                    )
                 if answer.offsets_in_context is not None:
-                    for span in answer.offsets_in_context:
-                        self.gold_offsets_in_contexts.append({"start": span.start, "end": span.end})
-
+                    self.gold_offsets_in_contexts.extend(
+                        {"start": span.start, "end": span.end}
+                        for span in answer.offsets_in_context
+                    )
         # There are two options here to represent document_ids:
         # taking the id from the document of each label or taking the document_id of each label's answer.
         # We take the former as labels without answers are allowed.
@@ -613,8 +606,7 @@ def _pydantic_dataclass_from_dict(dict: dict, pydantic_dataclass_type) -> Any:
         value = getattr(base_model, base_model_field_name)
         values[base_model_field_name] = value
 
-    dataclass_object = pydantic_dataclass_type(**values)
-    return dataclass_object
+    return pydantic_dataclass_type(**values)
 
 
 class NumpyEncoder(json.JSONEncoder):
@@ -934,8 +926,9 @@ class EvaluationResult:
             query_metrics = {metric: query_df[metric].max() if len(query_df) > 0 else 0.0 for metric in metrics_cols}
             metrics.append(query_metrics)
 
-        metrics_df = pd.DataFrame.from_records(metrics, index=answers["multilabel_id"].unique())
-        return metrics_df
+        return pd.DataFrame.from_records(
+            metrics, index=answers["multilabel_id"].unique()
+        )
 
     def _get_documents_df(self):
         document_dfs = [
@@ -944,8 +937,7 @@ class EvaluationResult:
         if len(document_dfs) != 1:
             raise ValueError("cannot detect retriever dataframe")
         documents_df = document_dfs[0]
-        documents_df = documents_df[documents_df["type"] == "document"]
-        return documents_df
+        return documents_df[documents_df["type"] == "document"]
 
     def _calculate_document_metrics(
         self, df: pd.DataFrame, simulated_top_k_retriever: int = -1, doc_relevance_col: str = "gold_id_match"
@@ -1016,8 +1008,9 @@ class EvaluationResult:
                 }
             )
 
-        metrics_df = pd.DataFrame.from_records(metrics, index=documents["multilabel_id"].unique())
-        return metrics_df
+        return pd.DataFrame.from_records(
+            metrics, index=documents["multilabel_id"].unique()
+        )
 
     def save(self, out_dir: Union[str, Path]):
         """
@@ -1043,5 +1036,4 @@ class EvaluationResult:
         cols_to_convert = ["gold_document_ids", "gold_document_contents", "gold_answers", "gold_offsets_in_documents"]
         converters = dict.fromkeys(cols_to_convert, ast.literal_eval)
         node_results = {file.stem: pd.read_csv(file, header=0, converters=converters) for file in csv_files}
-        result = cls(node_results)
-        return result
+        return cls(node_results)

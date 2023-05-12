@@ -38,10 +38,7 @@ label_index = "label"
 
 
 def benchmark_reader(ci=False, update_json=False, save_markdown=False, **kwargs):
-    if ci:
-        reader_models = reader_models_ci
-    else:
-        reader_models = reader_models_full
+    reader_models = reader_models_ci if ci else reader_models_full
     reader_results = []
     doc_store = get_document_store("elasticsearch")
     # download squad data

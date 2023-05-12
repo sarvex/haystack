@@ -173,7 +173,7 @@ class LanguageModel(nn.Module):
             language_model = cls.subclasses[config["name"]].load(pretrained_model_name_or_path)
         else:
             logger.info(f"Could not find {pretrained_model_name_or_path} locally.")
-            logger.info(f"Looking on Transformers Model Hub (in local cache and online)...")
+            logger.info("Looking on Transformers Model Hub (in local cache and online)...")
             if language_model_class is None:
                 language_model_class = cls.get_language_model_class(
                     pretrained_model_name_or_path, use_auth_token=use_auth_token, **kwargs
@@ -217,24 +217,16 @@ class LanguageModel(nn.Module):
 
         config = AutoConfig.from_pretrained(model_name_or_path, use_auth_token=use_auth_token, **kwargs)
         model_type = config.model_type
-        if model_type == "xlm-roberta":
-            language_model_class = "XLMRoberta"
-        elif model_type == "roberta":
-            if "mlm" in model_name_or_path.lower():
-                raise NotImplementedError("MLM part of codebert is currently not supported in Haystack")
-            language_model_class = "Roberta"
-        elif model_type == "camembert":
-            language_model_class = "Camembert"
-        elif model_type == "albert":
+        if model_type == "albert":
             language_model_class = "Albert"
-        elif model_type == "distilbert":
-            language_model_class = "DistilBert"
         elif model_type == "bert":
             language_model_class = "Bert"
-        elif model_type == "xlnet":
-            language_model_class = "XLNet"
-        elif model_type == "electra":
-            language_model_class = "Electra"
+        elif model_type == "big_bird":
+            language_model_class = "BigBird"
+        elif model_type == "camembert":
+            language_model_class = "Camembert"
+        elif model_type == "distilbert":
+            language_model_class = "DistilBert"
         elif model_type == "dpr":
             if config.architectures[0] == "DPRQuestionEncoder":
                 language_model_class = "DPRQuestionEncoder"
@@ -242,8 +234,16 @@ class LanguageModel(nn.Module):
                 language_model_class = "DPRContextEncoder"
             elif config.archictectures[0] == "DPRReader":
                 raise NotImplementedError("DPRReader models are currently not supported.")
-        elif model_type == "big_bird":
-            language_model_class = "BigBird"
+        elif model_type == "electra":
+            language_model_class = "Electra"
+        elif model_type == "roberta":
+            if "mlm" in model_name_or_path.lower():
+                raise NotImplementedError("MLM part of codebert is currently not supported in Haystack")
+            language_model_class = "Roberta"
+        elif model_type == "xlm-roberta":
+            language_model_class = "XLMRoberta"
+        elif model_type == "xlnet":
+            language_model_class = "XLNet"
         else:
             # Fall back to inferring type from model name
             logger.warning(
@@ -259,39 +259,37 @@ class LanguageModel(nn.Module):
         # If inferring Language model class from config doesn't succeed,
         # fall back to inferring Language model class from model name.
         if "xlm" in model_name_or_path.lower() and "roberta" in model_name_or_path.lower():
-            language_model_class = "XLMRoberta"
+            return "XLMRoberta"
         elif "bigbird" in model_name_or_path.lower():
-            language_model_class = "BigBird"
+            return "BigBird"
         elif "roberta" in model_name_or_path.lower():
-            language_model_class = "Roberta"
+            return "Roberta"
         elif "codebert" in model_name_or_path.lower():
             if "mlm" in model_name_or_path.lower():
                 raise NotImplementedError("MLM part of codebert is currently not supported in Haystack")
-            language_model_class = "Roberta"
+            return "Roberta"
         elif "camembert" in model_name_or_path.lower() or "umberto" in model_name_or_path.lower():
-            language_model_class = "Camembert"
+            return "Camembert"
         elif "albert" in model_name_or_path.lower():
-            language_model_class = "Albert"
+            return "Albert"
         elif "distilbert" in model_name_or_path.lower():
-            language_model_class = "DistilBert"
+            return "DistilBert"
         elif "bert" in model_name_or_path.lower():
-            language_model_class = "Bert"
+            return "Bert"
         elif "xlnet" in model_name_or_path.lower():
-            language_model_class = "XLNet"
+            return "XLNet"
         elif "electra" in model_name_or_path.lower():
-            language_model_class = "Electra"
+            return "Electra"
         elif "word2vec" in model_name_or_path.lower() or "glove" in model_name_or_path.lower():
-            language_model_class = "WordEmbedding_LM"
+            return "WordEmbedding_LM"
         elif "minilm" in model_name_or_path.lower():
-            language_model_class = "Bert"
+            return "Bert"
         elif "dpr-question_encoder" in model_name_or_path.lower():
-            language_model_class = "DPRQuestionEncoder"
+            return "DPRQuestionEncoder"
         elif "dpr-ctx_encoder" in model_name_or_path.lower():
-            language_model_class = "DPRContextEncoder"
+            return "DPRContextEncoder"
         else:
-            language_model_class = None
-
-        return language_model_class
+            return None
 
     def get_output_dims(self):
         config = self.model.config
@@ -315,7 +313,10 @@ class LanguageModel(nn.Module):
             setattr(self.model.config, "language", self.language)
             # For DPR models, transformers overwrites the model_type with the one set in DPRConfig
             # Therefore, we copy the model_type from the model config to DPRConfig
-            if self.__class__.__name__ == "DPRQuestionEncoder" or self.__class__.__name__ == "DPRContextEncoder":
+            if self.__class__.__name__ in [
+                "DPRQuestionEncoder",
+                "DPRContextEncoder",
+            ]:
                 setattr(transformers.DPRConfig, "model_type", self.model.config.model_type)
             string = self.model.config.to_json_string()
             file.write(string)
@@ -340,10 +341,7 @@ class LanguageModel(nn.Module):
 
     @classmethod
     def _get_or_infer_language_from_name(cls, language, name):
-        if language is not None:
-            return language
-        else:
-            return cls._infer_language_from_name(name)
+        return cls._infer_language_from_name(name) if language is None else language
 
     @classmethod
     def _infer_language_from_name(cls, name):
@@ -364,7 +362,7 @@ class LanguageModel(nn.Module):
         elif "umberto" in name:
             language = "italian"
             logger.info(f"Automatically detected language from language model name: {language}")
-        elif len(matches) == 0:
+        elif not matches:
             language = "english"
         elif len(matches) > 1:
             language = matches[0]
@@ -426,9 +424,7 @@ class LanguageModel(nn.Module):
 
         preds = []
         for vec, sample in zip(vecs, samples):
-            pred = {}
-            pred["context"] = sample.clear_text["text"]
-            pred["vec"] = vec
+            pred = {"context": sample.clear_text["text"], "vec": vec}
             preds.append(pred)
         return preds
 
@@ -484,10 +480,7 @@ class Bert(LanguageModel):
         :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
         """
         bert = cls()
-        if "haystack_lm_name" in kwargs:
-            bert.name = kwargs["haystack_lm_name"]
-        else:
-            bert.name = pretrained_model_name_or_path
+        bert.name = kwargs.get("haystack_lm_name", pretrained_model_name_or_path)
         # We need to differentiate between loading model using Haystack format and Pytorch-Transformers format
         haystack_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(haystack_lm_config):
@@ -529,7 +522,7 @@ class Bert(LanguageModel):
         if output_attentions is None:
             output_attentions = self.model.encoder.config.output_attentions
 
-        output_tuple = self.model(
+        return self.model(
             input_ids,
             token_type_ids=segment_ids,
             attention_mask=padding_mask,
@@ -537,7 +530,6 @@ class Bert(LanguageModel):
             output_attentions=output_attentions,
             return_dict=False,
         )
-        return output_tuple
 
     def enable_hidden_states_output(self):
         self.model.encoder.config.output_hidden_states = True
@@ -573,10 +565,7 @@ class Albert(LanguageModel):
         :return: Language Model
         """
         albert = cls()
-        if "haystack_lm_name" in kwargs:
-            albert.name = kwargs["haystack_lm_name"]
-        else:
-            albert.name = pretrained_model_name_or_path
+        albert.name = kwargs.get("haystack_lm_name", pretrained_model_name_or_path)
         # We need to differentiate between loading model using Haystack format and Pytorch-Transformers format
         haystack_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(haystack_lm_config):
@@ -618,7 +607,7 @@ class Albert(LanguageModel):
         if output_attentions is None:
             output_attentions = self.model.encoder.config.output_attentions
 
-        output_tuple = self.model(
+        return self.model(
             input_ids,
             token_type_ids=segment_ids,
             attention_mask=padding_mask,
@@ -626,7 +615,6 @@ class Albert(LanguageModel):
             output_attentions=output_attentions,
             return_dict=False,
         )
-        return output_tuple
 
     def enable_hidden_states_output(self):
         self.model.encoder.config.output_hidden_states = True
@@ -663,10 +651,7 @@ class Roberta(LanguageModel):
         :return: Language Model
         """
         roberta = cls()
-        if "haystack_lm_name" in kwargs:
-            roberta.name = kwargs["haystack_lm_name"]
-        else:
-            roberta.name = pretrained_model_name_or_path
+        roberta.name = kwargs.get("haystack_lm_name", pretrained_model_name_or_path)
         # We need to differentiate between loading model using Haystack format and Pytorch-Transformers format
         haystack_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(haystack_lm_config):
@@ -708,7 +693,7 @@ class Roberta(LanguageModel):
         if output_attentions is None:
             output_attentions = self.model.encoder.config.output_attentions
 
-        output_tuple = self.model(
+        return self.model(
             input_ids,
             token_type_ids=segment_ids,
             attention_mask=padding_mask,
@@ -716,7 +701,6 @@ class Roberta(LanguageModel):
             output_attentions=output_attentions,
             return_dict=False,
         )
-        return output_tuple
 
     def enable_hidden_states_output(self):
         self.model.encoder.config.output_hidden_states = True
@@ -753,10 +737,9 @@ class XLMRoberta(LanguageModel):
         :return: Language Model
         """
         xlm_roberta = cls()
-        if "haystack_lm_name" in kwargs:
-            xlm_roberta.name = kwargs["haystack_lm_name"]
-        else:
-            xlm_roberta.name = pretrained_model_name_or_path
+        xlm_roberta.name = kwargs.get(
+            "haystack_lm_name", pretrained_model_name_or_path
+        )
         # We need to differentiate between loading model using Haystack format and Pytorch-Transformers format
         haystack_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(haystack_lm_config):
@@ -798,7 +781,7 @@ class XLMRoberta(LanguageModel):
         if output_attentions is None:
             output_attentions = self.model.encoder.config.output_attentions
 
-        output_tuple = self.model(
+        return self.model(
             input_ids,
             token_type_ids=segment_ids,
             attention_mask=padding_mask,
@@ -806,7 +789,6 @@ class XLMRoberta(LanguageModel):
             output_attentions=output_attentions,
             return_dict=False,
         )
-        return output_tuple
 
     def enable_hidden_states_output(self):
         self.model.encoder.config.output_hidden_states = True
@@ -847,10 +829,7 @@ class DistilBert(LanguageModel):
         :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
         """
         distilbert = cls()
-        if "haystack_lm_name" in kwargs:
-            distilbert.name = kwargs["haystack_lm_name"]
-        else:
-            distilbert.name = pretrained_model_name_or_path
+        distilbert.name = kwargs.get("haystack_lm_name", pretrained_model_name_or_path)
         # We need to differentiate between loading model using Haystack format and Pytorch-Transformers format
         haystack_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(haystack_lm_config):
@@ -946,10 +925,7 @@ class XLNet(LanguageModel):
         :return: Language Model
         """
         xlnet = cls()
-        if "haystack_lm_name" in kwargs:
-            xlnet.name = kwargs["haystack_lm_name"]
-        else:
-            xlnet.name = pretrained_model_name_or_path
+        xlnet.name = kwargs.get("haystack_lm_name", pretrained_model_name_or_path)
         # We need to differentiate between loading model using Haystack format and Pytorch-Transformers format
         haystack_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(haystack_lm_config):
@@ -1055,10 +1031,7 @@ class Electra(LanguageModel):
         :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
         """
         electra = cls()
-        if "haystack_lm_name" in kwargs:
-            electra.name = kwargs["haystack_lm_name"]
-        else:
-            electra.name = pretrained_model_name_or_path
+        electra.name = kwargs.get("haystack_lm_name", pretrained_model_name_or_path)
         # We need to differentiate between loading model using Haystack format and Transformers format
         haystack_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(haystack_lm_config):
@@ -1153,10 +1126,7 @@ class Camembert(Roberta):
         :return: Language Model
         """
         camembert = cls()
-        if "haystack_lm_name" in kwargs:
-            camembert.name = kwargs["haystack_lm_name"]
-        else:
-            camembert.name = pretrained_model_name_or_path
+        camembert.name = kwargs.get("haystack_lm_name", pretrained_model_name_or_path)
         # We need to differentiate between loading model using Haystack format and Pytorch-Transformers format
         haystack_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(haystack_lm_config):
@@ -1201,11 +1171,9 @@ class DPRQuestionEncoder(LanguageModel):
         :param pretrained_model_name_or_path: The path of the base pretrained language model whose weights are used to initialize DPRQuestionEncoder
         """
         dpr_question_encoder = cls()
-        if "haystack_lm_name" in kwargs:
-            dpr_question_encoder.name = kwargs["haystack_lm_name"]
-        else:
-            dpr_question_encoder.name = pretrained_model_name_or_path
-
+        dpr_question_encoder.name = kwargs.get(
+            "haystack_lm_name", pretrained_model_name_or_path
+        )
         # We need to differentiate between loading model using Haystack format and Pytorch-Transformers format
         haystack_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(haystack_lm_config):
@@ -1224,8 +1192,7 @@ class DPRQuestionEncoder(LanguageModel):
                         f"Using a model of type '{original_model_config.model_type}' which might be incompatible with DPR encoders."
                         f"Bert based encoders are supported that need input_ids,token_type_ids,attention_mask as input tensors."
                     )
-                original_config_dict = vars(original_model_config)
-                original_config_dict.update(kwargs)
+                original_config_dict = vars(original_model_config) | kwargs
                 dpr_question_encoder.model = transformers.DPRQuestionEncoder(
                     config=transformers.DPRConfig(**original_config_dict)
                 )
@@ -1252,8 +1219,7 @@ class DPRQuestionEncoder(LanguageModel):
                         f"Using a model of type '{original_model_config.model_type}' which might be incompatible with DPR encoders."
                         f"Bert based encoders are supported that need input_ids,token_type_ids,attention_mask as input tensors."
                     )
-                original_config_dict = vars(original_model_config)
-                original_config_dict.update(kwargs)
+                original_config_dict = vars(original_model_config) | kwargs
                 dpr_question_encoder.model = transformers.DPRQuestionEncoder(
                     config=transformers.DPRConfig(**original_config_dict)
                 )
@@ -1314,12 +1280,10 @@ class DPRQuestionEncoder(LanguageModel):
             attention_mask=query_attention_mask,
             return_dict=True,
         )
-        if self.model.question_encoder.config.output_hidden_states == True:
-            pooled_output, all_hidden_states = output_tuple.pooler_output, output_tuple.hidden_states
-            return pooled_output, all_hidden_states
-        else:
-            pooled_output = output_tuple.pooler_output
-            return pooled_output, None
+        if self.model.question_encoder.config.output_hidden_states != True:
+            return output_tuple.pooler_output, None
+        pooled_output, all_hidden_states = output_tuple.pooler_output, output_tuple.hidden_states
+        return pooled_output, all_hidden_states
 
     def enable_hidden_states_output(self):
         self.model.question_encoder.config.output_hidden_states = True
@@ -1357,10 +1321,9 @@ class DPRContextEncoder(LanguageModel):
         :param pretrained_model_name_or_path: The path of the base pretrained language model whose weights are used to initialize DPRContextEncoder
         """
         dpr_context_encoder = cls()
-        if "haystack_lm_name" in kwargs:
-            dpr_context_encoder.name = kwargs["haystack_lm_name"]
-        else:
-            dpr_context_encoder.name = pretrained_model_name_or_path
+        dpr_context_encoder.name = kwargs.get(
+            "haystack_lm_name", pretrained_model_name_or_path
+        )
         # We need to differentiate between loading model using Haystack format and Pytorch-Transformers format
         haystack_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
 
@@ -1380,8 +1343,7 @@ class DPRContextEncoder(LanguageModel):
                         f"Using a model of type '{original_model_config.model_type}' which might be incompatible with DPR encoders."
                         f"Bert based encoders are supported that need input_ids,token_type_ids,attention_mask as input tensors."
                     )
-                original_config_dict = vars(original_model_config)
-                original_config_dict.update(kwargs)
+                original_config_dict = vars(original_model_config) | kwargs
                 dpr_context_encoder.model = transformers.DPRContextEncoder(
                     config=transformers.DPRConfig(**original_config_dict)
                 )
@@ -1412,8 +1374,7 @@ class DPRContextEncoder(LanguageModel):
                         f"Using a model of type '{original_model_config.model_type}' which might be incompatible with DPR encoders."
                         f"Bert based encoders are supported that need input_ids,token_type_ids,attention_mask as input tensors."
                     )
-                original_config_dict = vars(original_model_config)
-                original_config_dict.update(kwargs)
+                original_config_dict = vars(original_model_config) | kwargs
                 dpr_context_encoder.model = transformers.DPRContextEncoder(
                     config=transformers.DPRConfig(**original_config_dict)
                 )
@@ -1477,12 +1438,10 @@ class DPRContextEncoder(LanguageModel):
             attention_mask=passage_attention_mask,
             return_dict=True,
         )
-        if self.model.ctx_encoder.config.output_hidden_states == True:
-            pooled_output, all_hidden_states = output_tuple.pooler_output, output_tuple.hidden_states
-            return pooled_output, all_hidden_states
-        else:
-            pooled_output = output_tuple.pooler_output
-            return pooled_output, None
+        if self.model.ctx_encoder.config.output_hidden_states != True:
+            return output_tuple.pooler_output, None
+        pooled_output, all_hidden_states = output_tuple.pooler_output, output_tuple.hidden_states
+        return pooled_output, all_hidden_states
 
     def enable_hidden_states_output(self):
         self.model.ctx_encoder.config.output_hidden_states = True
@@ -1525,10 +1484,7 @@ class BigBird(LanguageModel):
         :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
         """
         big_bird = cls()
-        if "haystack_lm_name" in kwargs:
-            big_bird.name = kwargs["haystack_lm_name"]
-        else:
-            big_bird.name = pretrained_model_name_or_path
+        big_bird.name = kwargs.get("haystack_lm_name", pretrained_model_name_or_path)
         # We need to differentiate between loading model using Haystack format and Pytorch-Transformers format
         haystack_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(haystack_lm_config):
@@ -1570,7 +1526,7 @@ class BigBird(LanguageModel):
         if output_attentions is None:
             output_attentions = self.model.encoder.config.output_attentions
 
-        output_tuple = self.model(
+        return self.model(
             input_ids,
             token_type_ids=segment_ids,
             attention_mask=padding_mask,
@@ -1578,7 +1534,6 @@ class BigBird(LanguageModel):
             output_attentions=output_attentions,
             return_dict=False,
         )
-        return output_tuple
 
     def enable_hidden_states_output(self):
         self.model.encoder.config.output_hidden_states = True

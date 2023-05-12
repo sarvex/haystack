@@ -108,7 +108,7 @@ def test_bert_tokenizer_all_meta(caplog):
     encoded_batch = tokenizer.encode_plus(basic_text)
     encoded = encoded_batch.encodings[0]
     words = np.array(encoded.words)
-    words[words == None] = -1
+    words[words is None] = -1
     start_of_word_single = [False] + list(np.ediff1d(words) > 0)
     assert encoded.tokens == [
         "[CLS]",
@@ -253,10 +253,7 @@ def test_all_tokenizer_on_special_cases(caplog):
 
     tokenizers = []
     for lang_name in lang_names:
-        if "roberta" in lang_name:
-            add_prefix_space = True
-        else:
-            add_prefix_space = False
+        add_prefix_space = "roberta" in lang_name
         t = Tokenizer.load(lang_name, lower_case=False, add_prefix_space=add_prefix_space)
         tokenizers.append(t)
 

@@ -87,8 +87,7 @@ def get_json_schema():
     for module, node in possible_nodes:
         if lenient_issubclass(node, haystack.nodes.BaseComponent) and not node.__name__.startswith("Base"):
             logging.info(f"Processing node: {node.__name__}")
-            init_method = getattr(node, "__init__", None)
-            if init_method:
+            if init_method := getattr(node, "__init__", None):
                 signature = get_typed_signature(init_method)
                 param_fields = [
                     param
@@ -120,7 +119,7 @@ def get_json_schema():
                 ] = "Each parameter can reference other components defined in the same YAML file."
                 if "definitions" in params_schema:
                     params_definitions = params_schema.pop("definitions")
-                    additional_definitions.update(params_definitions)
+                    additional_definitions |= params_definitions
                 component_schema = {
                     "type": "object",
                     "properties": {
@@ -144,7 +143,7 @@ def get_json_schema():
 
     all_definitions = {**schema_definitions, **additional_definitions}
     component_refs = [{"$ref": f"#/definitions/{name}"} for name in schema_definitions]
-    pipeline_schema = {
+    return {
         "$schema": "http://json-schema.org/draft-07/schema",
         "$id": f"https://haystack.deepset.ai/json-schemas/{filename}",
         "title": "Haystack Pipeline",
@@ -210,7 +209,6 @@ def get_json_schema():
         "additionalProperties": False,
         "definitions": all_definitions,
     }
-    return pipeline_schema
 
 
 def list_indexed_versions(index):
@@ -220,9 +218,11 @@ def list_indexed_versions(index):
     """
     indexed_versions = []
     for version_entry in index["oneOf"]:
-        for property_entry in version_entry["allOf"]:
-            if "properties" in property_entry.keys():
-                indexed_versions.append(property_entry["properties"]["version"]["const"])
+        indexed_versions.extend(
+            property_entry["properties"]["version"]["const"]
+            for property_entry in version_entry["allOf"]
+            if "properties" in property_entry.keys()
+        )
     return indexed_versions
 
 
@@ -234,10 +234,13 @@ def cleanup_rc_versions(index):
     new_versions_list = []
     for version_entry in index["oneOf"]:
         for property_entry in version_entry["allOf"]:
-            if "properties" in property_entry.keys():
-                if "rc" not in property_entry["properties"]["version"]["const"]:
-                    new_versions_list.append(version_entry)
-                    break
+            if (
+                "properties" in property_entry.keys()
+                and "rc"
+                not in property_entry["properties"]["version"]["const"]
+            ):
+                new_versions_list.append(version_entry)
+                break
     index["oneOf"] = new_versions_list
     return index
 
@@ -271,7 +274,7 @@ def generate_json_schema():
     if index:
         index = cleanup_rc_versions(index)
         indexed_versions = list_indexed_versions(index)
-        if not any(version == schema_version for version in indexed_versions):
+        if all(version != schema_version for version in indexed_versions):
             index["oneOf"].append(new_version_entry(schema_version))
             with open(index_path, "w") as index_file:
                 json.dump(index, index_file, indent=4)

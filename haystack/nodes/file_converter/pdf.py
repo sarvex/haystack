@@ -8,7 +8,7 @@ from pathlib import Path
 
 try:
     from pdf2image import convert_from_path
-except (ImportError, ModuleNotFoundError) as ie:
+except ImportError as ie:
     from haystack.utils.import_utils import _optional_component_not_installed
 
     _optional_component_not_installed(__name__, "ocr", ie)
@@ -115,10 +115,14 @@ class PDFToTextConverter(BaseConverter):
                 digits = [word for word in words if any(i.isdigit() for i in word)]
 
                 # remove lines having > 40% of words as digits AND not ending with a period(.)
-                if remove_numeric_tables:
-                    if words and len(digits) / len(words) > 0.4 and not line.strip().endswith("."):
-                        logger.debug(f"Removing line '{line}' from {file_path}")
-                        continue
+                if (
+                    remove_numeric_tables
+                    and words
+                    and len(digits) / len(words) > 0.4
+                    and not line.strip().endswith(".")
+                ):
+                    logger.debug(f"Removing line '{line}' from {file_path}")
+                    continue
                 cleaned_lines.append(line)
 
             page = "\n".join(cleaned_lines)

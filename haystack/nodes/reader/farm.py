@@ -230,8 +230,8 @@ class FARMReader(BaseReader):
 
         # 1. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
         label_list = ["start_token", "end_token"]
-        metric = "squad"
         if processor is None:
+            metric = "squad"
             processor = SquadProcessor(
                 tokenizer=self.inferencer.processor.tokenizer,
                 max_seq_len=max_seq_len,
@@ -793,10 +793,7 @@ class FARMReader(BaseReader):
         )
         # assemble answers from all the different documents & format them.
         answers, max_no_ans_gap = self._extract_answers_of_predictions(predictions, top_k)
-        # TODO: potentially simplify return here to List[Answer] and handle no_ans_gap differently
-        result = {"query": query, "no_ans_gap": max_no_ans_gap, "answers": answers}
-
-        return result
+        return {"query": query, "no_ans_gap": max_no_ans_gap, "answers": answers}
 
     def eval_on_file(self, data_dir: str, test_filename: str, device: Optional[str] = None):
         """
@@ -833,12 +830,11 @@ class FARMReader(BaseReader):
         evaluator = Evaluator(data_loader=data_loader, tasks=eval_processor.tasks, device=device)
 
         eval_results = evaluator.eval(self.inferencer.model)
-        results = {
+        return {
             "EM": eval_results[0]["EM"],
             "f1": eval_results[0]["f1"],
             "top_n_accuracy": eval_results[0]["top_n_accuracy"],
         }
-        return results
 
     def eval(
         self,
@@ -881,7 +877,7 @@ class FARMReader(BaseReader):
         aggregated_per_doc = defaultdict(list)
         for label in labels:
             if not label.document.id:
-                logger.error(f"Label does not contain a document id")
+                logger.error("Label does not contain a document id")
                 continue
             aggregated_per_doc[label.document.id].append(label)
 
@@ -911,7 +907,7 @@ class FARMReader(BaseReader):
                         continue
                     # add to existing answers
                     # TODO offsets (whole block)
-                    if aggregation_key in aggregated_per_question.keys():
+                    if aggregation_key in aggregated_per_question:
                         if label.no_answer:
                             continue
 
@@ -928,34 +924,31 @@ class FARMReader(BaseReader):
                             }
                         )
                         aggregated_per_question[aggregation_key]["is_impossible"] = False
-                    # create new one
+                    elif label.no_answer == True:
+                        aggregated_per_question[aggregation_key] = {
+                            "id": str(hash(str(doc_id) + label.query)),
+                            "question": label.query,
+                            "answers": [],
+                            "is_impossible": True,
+                        }
                     else:
-                        # We don't need to create an answer dict if is_impossible / no_answer
-                        if label.no_answer == True:
-                            aggregated_per_question[aggregation_key] = {
-                                "id": str(hash(str(doc_id) + label.query)),
-                                "question": label.query,
-                                "answers": [],
-                                "is_impossible": True,
-                            }
-                        else:
-                            aggregated_per_question[aggregation_key] = {
-                                "id": str(hash(str(doc_id) + label.query)),
-                                "question": label.query,
-                                "answers": [
-                                    {
-                                        "text": label.answer.answer,
-                                        "answer_start": label.answer.offsets_in_document[0].start,
-                                    }
-                                ],
-                                "is_impossible": False,
-                            }
+                        aggregated_per_question[aggregation_key] = {
+                            "id": str(hash(str(doc_id) + label.query)),
+                            "question": label.query,
+                            "answers": [
+                                {
+                                    "text": label.answer.answer,
+                                    "answer_start": label.answer.offsets_in_document[0].start,
+                                }
+                            ],
+                            "is_impossible": False,
+                        }
 
             # Get rid of the question key again (after we aggregated we don't need it anymore)
-            d[str(doc_id)]["qas"] = [v for v in aggregated_per_question.values()]
+            d[str(doc_id)]["qas"] = list(aggregated_per_question.values())
 
         # Convert input format for FARM
-        farm_input = [v for v in d.values()]
+        farm_input = list(d.values())
         n_queries = len([y for x in farm_input for y in x["qas"]])
 
         # Create DataLoader that can be passed to the Evaluator
@@ -971,7 +964,7 @@ class FARMReader(BaseReader):
         eval_results = evaluator.eval(self.inferencer.model, calibrate_conf_scores=calibrate_conf_scores)
         toc = perf_counter()
         reader_time = toc - tic
-        results = {
+        return {
             "EM": eval_results[0]["EM"] * 100,
             "f1": eval_results[0]["f1"] * 100,
             "top_n_accuracy": eval_results[0]["top_n_accuracy"] * 100,
@@ -979,7 +972,6 @@ class FARMReader(BaseReader):
             "reader_time": reader_time,
             "seconds_per_query": reader_time / n_queries,
         }
-        return results
 
     def _extract_answers_of_predictions(self, predictions: List[QAPred], top_k: Optional[int] = None):
         # Assemble answers from all the different documents and format them.
@@ -994,9 +986,7 @@ class FARMReader(BaseReader):
             no_ans_gaps.append(pred.no_answer_gap)
             for ans in pred.prediction:
                 # skip 'no answers' here
-                if self._check_no_answer(ans):
-                    pass
-                else:
+                if not self._check_no_answer(ans):
                     cur = Answer(
                         answer=ans.answer,
                         type="extractive",
@@ -1064,11 +1054,14 @@ class FARMReader(BaseReader):
     @staticmethod
     def _check_no_answer(c: QACandidate):
         # check for correct value in "answer"
-        if c.offset_answer_start == 0 and c.offset_answer_end == 0:
-            if c.answer != "no_answer":
-                logger.error(
-                    "Invalid 'no_answer': Got a prediction for position 0, but answer string is not 'no_answer'"
-                )
+        if (
+            c.offset_answer_start == 0
+            and c.offset_answer_end == 0
+            and c.answer != "no_answer"
+        ):
+            logger.error(
+                "Invalid 'no_answer': Got a prediction for position 0, but answer string is not 'no_answer'"
+            )
         return c.answer == "no_answer"
 
     def predict_on_texts(self, question: str, texts: List[str], top_k: Optional[int] = None):
@@ -1096,11 +1089,8 @@ class FARMReader(BaseReader):
         :param top_k: The maximum number of answers to return
         :return: Dict containing question and answers
         """
-        documents = []
-        for text in texts:
-            documents.append(Document(content=text))
-        predictions = self.predict(question, documents, top_k)
-        return predictions
+        documents = [Document(content=text) for text in texts]
+        return self.predict(question, documents, top_k)
 
     @classmethod
     def convert_to_onnx(

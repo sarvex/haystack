@@ -191,10 +191,9 @@ class BiAdaptiveModel(nn.Module):
         :return: torch.Tensor that is the per sample loss (len: batch_size).
         """
         all_losses = self.logits_to_loss_per_head(logits, **kwargs)
-        # This aggregates the loss per sample across multiple prediction heads
-        # Default is sum(), but you can configure any fn that takes [Tensor, Tensor ...] and returns [Tensor]
-        loss = self.loss_aggregation_fn(all_losses, global_step=global_step, batch=kwargs)
-        return loss
+        return self.loss_aggregation_fn(
+            all_losses, global_step=global_step, batch=kwargs
+        )
 
     def logits_to_preds(self, logits: torch.Tensor, **kwargs):
         """
@@ -275,28 +274,26 @@ class BiAdaptiveModel(nn.Module):
         if len(self.prediction_heads) > 0:
             for head, lm1_out, lm2_out in zip(self.prediction_heads, self.lm1_output_types, self.lm2_output_types):
                 # Choose relevant vectors from LM as output and perform dropout
-                if pooled_output[0] is not None:
-                    if lm1_out == "per_sequence" or lm1_out == "per_sequence_continuous":
-                        output1 = self.dropout1(pooled_output[0])
-                    else:
-                        raise ValueError(
-                            "Unknown extraction strategy from BiAdaptive language_model1: {}".format(lm1_out)
-                        )
-                else:
+                if pooled_output[0] is None:
                     output1 = None
 
-                if pooled_output[1] is not None:
-                    if lm2_out == "per_sequence" or lm2_out == "per_sequence_continuous":
-                        output2 = self.dropout2(pooled_output[1])
-                    else:
-                        raise ValueError(
-                            "Unknown extraction strategy from BiAdaptive language_model2: {}".format(lm2_out)
-                        )
+                elif lm1_out in ["per_sequence", "per_sequence_continuous"]:
+                    output1 = self.dropout1(pooled_output[0])
                 else:
+                    raise ValueError(
+                        f"Unknown extraction strategy from BiAdaptive language_model1: {lm1_out}"
+                    )
+                if pooled_output[1] is None:
                     output2 = None
 
+                elif lm2_out in ["per_sequence", "per_sequence_continuous"]:
+                    output2 = self.dropout2(pooled_output[1])
+                else:
+                    raise ValueError(
+                        f"Unknown extraction strategy from BiAdaptive language_model2: {lm2_out}"
+                    )
                 embedding1, embedding2 = head(output1, output2)
-                all_logits.append(tuple([embedding1, embedding2]))
+                all_logits.append((embedding1, embedding2))
         else:
             # just return LM output (e.g. useful for extracting embeddings at inference time)
             all_logits.append((pooled_output))
@@ -311,10 +308,10 @@ class BiAdaptiveModel(nn.Module):
         :return: 2 tensors of pooled_output from the 2 language models.
         """
         pooled_output = [None, None]
-        if "query_input_ids" in kwargs.keys():
+        if "query_input_ids" in kwargs:
             pooled_output1, hidden_states1 = self.language_model1(**kwargs)
             pooled_output[0] = pooled_output1
-        if "passage_input_ids" in kwargs.keys():
+        if "passage_input_ids" in kwargs:
             pooled_output2, hidden_states2 = self.language_model2(**kwargs)
             pooled_output[1] = pooled_output2
 
@@ -402,28 +399,26 @@ class BiAdaptiveModel(nn.Module):
                 f"Your model has {len(self.prediction_heads)}"
             )
 
-        if self.prediction_heads[0].model_type == "text_similarity":
-            # init model
-            if "dpr" in self.language_model1.model.config.model_type:
-                transformers_model1 = DPRQuestionEncoder(config=self.language_model1.model.config)
-            else:
-                transformers_model1 = AutoModel.from_config(config=self.language_model1.model.config)
-            if "dpr" in self.language_model2.model.config.model_type:
-                transformers_model2 = DPRContextEncoder(config=self.language_model2.model.config)
-            else:
-                transformers_model2 = AutoModel.from_config(config=self.language_model2.model.config)
-
-            # transfer weights for language model + prediction head
-            setattr(transformers_model1, transformers_model1.base_model_prefix, self.language_model1.model)
-            setattr(transformers_model2, transformers_model2.base_model_prefix, self.language_model2.model)
-            logger.warning("No prediction head weights are required for DPR")
-
-        else:
+        if self.prediction_heads[0].model_type != "text_similarity":
             raise NotImplementedError(
                 f"Haystack -> Transformers conversion is not supported yet for"
                 f" prediction heads of type {self.prediction_heads[0].model_type}"
             )
-        pass
+            # init model
+        transformers_model1 = (
+            DPRQuestionEncoder(config=self.language_model1.model.config)
+            if "dpr" in self.language_model1.model.config.model_type
+            else AutoModel.from_config(config=self.language_model1.model.config)
+        )
+        if "dpr" in self.language_model2.model.config.model_type:
+            transformers_model2 = DPRContextEncoder(config=self.language_model2.model.config)
+        else:
+            transformers_model2 = AutoModel.from_config(config=self.language_model2.model.config)
+
+        # transfer weights for language model + prediction head
+        setattr(transformers_model1, transformers_model1.base_model_prefix, self.language_model1.model)
+        setattr(transformers_model2, transformers_model2.base_model_prefix, self.language_model2.model)
+        logger.warning("No prediction head weights are required for DPR")
 
         return transformers_model1, transformers_model2
 

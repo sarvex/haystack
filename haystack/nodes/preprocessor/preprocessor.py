@@ -168,14 +168,13 @@ class PreProcessor(BasePreProcessor):
             clean_header_footer=clean_header_footer,
             clean_empty_lines=clean_empty_lines,
         )
-        split_documents = self.split(
+        return self.split(
             document=cleaned_document,
             split_by=split_by,
             split_length=split_length,
             split_overlap=split_overlap,
             split_respect_sentence_boundary=split_respect_sentence_boundary,
         )
-        return split_documents
 
     def _process_batch(self, documents: List[dict], **kwargs) -> List[dict]:
         nested_docs = [self._process_single(d, **kwargs) for d in tqdm(documents, unit="docs")]
@@ -236,7 +235,8 @@ class PreProcessor(BasePreProcessor):
 
         text = document["content"]
 
-        if split_respect_sentence_boundary and split_by == "word":
+        text_splits = []
+        if split_respect_sentence_boundary:
             # split by words ensuring no sub sentence splits
             sentences = nltk.tokenize.sent_tokenize(text, language=self.language)
             word_count = 0
@@ -245,7 +245,7 @@ class PreProcessor(BasePreProcessor):
             for sen in sentences:
                 current_word_count = len(sen.split(" "))
                 if current_word_count > split_length:
-                    long_sentence_message = f"One or more sentence found with word count higher than the split length."
+                    long_sentence_message = "One or more sentence found with word count higher than the split length."
                     if long_sentence_message not in self.print_log:
                         self.print_log.add(long_sentence_message)
                         logger.warning(long_sentence_message)
@@ -256,12 +256,11 @@ class PreProcessor(BasePreProcessor):
                         overlap = []
                         w_count = 0
                         for s in current_slice[::-1]:
-                            sen_len = len(s.split(" "))
-                            if w_count < split_overlap:
-                                overlap.append(s)
-                                w_count += sen_len
-                            else:
+                            if w_count >= split_overlap:
                                 break
+                            overlap.append(s)
+                            sen_len = len(s.split(" "))
+                            w_count += sen_len
                         current_slice = list(reversed(overlap))
                         word_count = w_count
                     else:
@@ -272,10 +271,9 @@ class PreProcessor(BasePreProcessor):
             if current_slice:
                 list_splits.append(current_slice)
 
-            text_splits = []
             for sl in list_splits:
                 txt = " ".join(sl)
-                if len(txt) > 0:
+                if txt != "":
                     text_splits.append(txt)
         else:
             # create individual "elements" of passage, sentence, or word
@@ -295,10 +293,9 @@ class PreProcessor(BasePreProcessor):
                 segments = windowed(elements, n=split_length, step=split_length - split_overlap)
             else:
                 segments = windowed(elements, n=split_length, step=split_length)
-            text_splits = []
             for seg in segments:
                 txt = " ".join([t for t in seg if t is not None])
-                if len(txt) > 0:
+                if txt != "":
                     text_splits.append(txt)
 
         # create new document dicts for each text split
@@ -342,8 +339,7 @@ class PreProcessor(BasePreProcessor):
         if found_footer:
             pages = [page.replace(found_footer, "") for page in pages]
         logger.debug(f"Removed header '{found_header}' and footer '{found_footer}' in document")
-        text = "\f".join(pages)
-        return text
+        return "\f".join(pages)
 
     def _ngram(self, seq: str, n: int) -> Generator[str, None, None]:
         """
@@ -359,17 +355,15 @@ class PreProcessor(BasePreProcessor):
         seq = seq.replace("\t", " \t")
 
         words = seq.split(" ")
-        ngrams = (
-            " ".join(words[i : i + n]).replace(" \n", "\n").replace(" \t", "\t") for i in range(0, len(words) - n + 1)
+        return (
+            " ".join(words[i : i + n]).replace(" \n", "\n").replace(" \t", "\t")
+            for i in range(0, len(words) - n + 1)
         )
-
-        return ngrams
 
     def _allngram(self, seq: str, min_ngram: int, max_ngram: int) -> Set[str]:
         lengths = range(min_ngram, max_ngram) if max_ngram else range(min_ngram, len(seq))
         ngrams = map(partial(self._ngram, seq), lengths)
-        res = set(chain.from_iterable(ngrams))
-        return res
+        return set(chain.from_iterable(ngrams))
 
     def _find_longest_common_ngram(
         self, sequences: List[str], max_ngram: int = 30, min_ngram: int = 3

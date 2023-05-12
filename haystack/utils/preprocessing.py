@@ -22,7 +22,7 @@ def convert_files_to_dicts(
     :param split_paragraphs: split text in paragraphs.
     :param encoding: character encoding to use when converting pdf documents.
     """
-    file_paths = [p for p in Path(dir_path).glob("**/*")]
+    file_paths = list(Path(dir_path).glob("**/*"))
     allowed_suffixes = [".pdf", ".txt", ".docx"]
     suffix2converter: Dict[str, BaseConverter] = {}
 
@@ -40,20 +40,20 @@ def convert_files_to_dicts(
             )
 
     # No need to initialize converter if file type not present
-    for file_suffix in suffix2paths.keys():
-        if file_suffix == ".pdf":
-            suffix2converter[file_suffix] = PDFToTextConverter()
-        if file_suffix == ".txt":
-            suffix2converter[file_suffix] = TextConverter()
+    for file_suffix in suffix2paths:
         if file_suffix == ".docx":
             suffix2converter[file_suffix] = DocxToTextConverter()
 
+        elif file_suffix == ".pdf":
+            suffix2converter[file_suffix] = PDFToTextConverter()
+        elif file_suffix == ".txt":
+            suffix2converter[file_suffix] = TextConverter()
     documents = []
     for suffix, paths in suffix2paths.items():
         for path in paths:
             if encoding is None and suffix == ".pdf":
                 encoding = "Latin1"
-            logger.info("Converting {}".format(path))
+            logger.info(f"Converting {path}")
             document = suffix2converter[suffix].convert(file_path=path, meta=None, encoding=encoding,)[
                 0
             ]  # PDFToTextConverter, TextConverter, and DocxToTextConverter return a list containing a single dict
@@ -63,10 +63,11 @@ def convert_files_to_dicts(
                 text = clean_func(text)
 
             if split_paragraphs:
-                for para in text.split("\n\n"):
-                    if not para.strip():  # skip empty paragraphs
-                        continue
-                    documents.append({"content": para, "meta": {"name": path.name}})
+                documents.extend(
+                    {"content": para, "meta": {"name": path.name}}
+                    for para in text.split("\n\n")
+                    if para.strip()
+                )
             else:
                 documents.append({"content": text, "meta": {"name": path.name}})
 
@@ -93,10 +94,12 @@ def tika_convert_files_to_dicts(
     try:
         from haystack.nodes.file_converter import TikaConverter
     except Exception as ex:
-        logger.error("Tika not installed. Please install tika and try again. Error: {}".format(ex))
+        logger.error(
+            f"Tika not installed. Please install tika and try again. Error: {ex}"
+        )
         raise ex
     converter = TikaConverter()
-    paths = [p for p in Path(dir_path).glob("**/*")]
+    paths = list(Path(dir_path).glob("**/*"))
     allowed_suffixes = [".pdf", ".txt"]
     file_paths: List[Path] = []
 
@@ -112,7 +115,7 @@ def tika_convert_files_to_dicts(
 
     documents = []
     for path in file_paths:
-        logger.info("Converting {}".format(path))
+        logger.info(f"Converting {path}")
         document = converter.convert(path)[
             0
         ]  # PDFToTextConverter, TextConverter, and DocxToTextConverter return a list containing a single dict
@@ -127,10 +130,8 @@ def tika_convert_files_to_dicts(
                 # pop the last paragraph from the first page
                 last_para = paras.pop(-1) if paras else ""
                 for page in pages[1:]:
-                    page_paras = page.split("\n\n")
-                    # merge the last paragraph in previous page to the first paragraph in this page
-                    if page_paras:
-                        page_paras[0] = last_para + " " + page_paras[0]
+                    if page_paras := page.split("\n\n"):
+                        page_paras[0] = f"{last_para} {page_paras[0]}"
                         last_para = page_paras.pop(-1)
                         paras += page_paras
                 if last_para:
@@ -151,7 +152,7 @@ def tika_convert_files_to_dicts(
 
                         # merge paragraphs to improve qa
                         if (merge_short and para_is_short) or (merge_lowercase and para_is_lowercase):
-                            last_para += " " + para
+                            last_para += f" {para}"
                         else:
                             if last_para:
                                 documents.append({"content": last_para, "meta": meta})

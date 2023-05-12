@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 try:
     from bs4 import BeautifulSoup
     from markdown import markdown
-except (ImportError, ModuleNotFoundError) as ie:
+except ImportError as ie:
     from haystack.utils.import_utils import _optional_component_not_installed
 
     _optional_component_not_installed(__name__, "preprocessing", ie)
@@ -60,6 +60,4 @@ class MarkdownConverter(BaseConverter):
 
         # extract text
         soup = BeautifulSoup(html, "html.parser")
-        text = "".join(soup.findAll(text=True))
-
-        return text
+        return "".join(soup.findAll(text=True))

@@ -118,10 +118,10 @@ class TransformersTranslator(BaseTranslator):
                 text_for_translator = [answer.answer for answer in documents]  # type: ignore
             elif isinstance(documents[0], str):
                 text_for_translator = documents  # type: ignore
-            else:
-                if not isinstance(documents[0].get(dict_key, None), str):  # type: ignore
-                    raise AttributeError(f"Dictionary should have {dict_key} key and it's value should be `str` type")
+            elif isinstance(documents[0].get(dict_key, None), str):
                 text_for_translator = [doc[dict_key] for doc in documents]  # type: ignore
+            else:  # type: ignore
+                raise AttributeError(f"Dictionary should have {dict_key} key and it's value should be `str` type")
         else:
             text_for_translator: List[str] = [query]  # type: ignore
 
@@ -139,7 +139,7 @@ class TransformersTranslator(BaseTranslator):
             return translated_texts[0]
         elif documents:
             if isinstance(documents, list) and isinstance(documents[0], str):
-                return [translated_text for translated_text in translated_texts]
+                return list(translated_texts)
 
             for translated_text, doc in zip(translated_texts, documents):
                 if isinstance(doc, Document):

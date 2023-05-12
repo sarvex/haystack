@@ -52,8 +52,7 @@ class BaseStandardPipeline(ABC):
 
         :param name: The name of the node.
         """
-        component = self.pipeline.get_node(name)
-        return component
+        return self.pipeline.get_node(name)
 
     def set_node(self, name: str, component):
         """
@@ -172,13 +171,12 @@ class BaseStandardPipeline(ABC):
                                     should be path or string pointing to downloadable models.
         :param add_isolated_node_eval: Whether to additionally evaluate the reader based on labels as input instead of output of previous node in pipeline
         """
-        output = self.pipeline.eval(
+        return self.pipeline.eval(
             labels=labels,
             params=params,
             sas_model_name_or_path=sas_model_name_or_path,
             add_isolated_node_eval=add_isolated_node_eval,
         )
-        return output
 
     def print_eval_report(
         self,
@@ -219,8 +217,7 @@ class ExtractiveQAPipeline(BaseStandardPipeline):
                       All debug information can then be found in the dict returned
                       by this method under the key "_debug"
         """
-        output = self.pipeline.run(query=query, params=params, debug=debug)
-        return output
+        return self.pipeline.run(query=query, params=params, debug=debug)
 
 
 class DocumentSearchPipeline(BaseStandardPipeline):
@@ -245,8 +242,7 @@ class DocumentSearchPipeline(BaseStandardPipeline):
               All debug information can then be found in the dict returned
               by this method under the key "_debug"
         """
-        output = self.pipeline.run(query=query, params=params, debug=debug)
-        return output
+        return self.pipeline.run(query=query, params=params, debug=debug)
 
 
 class GenerativeQAPipeline(BaseStandardPipeline):
@@ -274,8 +270,7 @@ class GenerativeQAPipeline(BaseStandardPipeline):
               All debug information can then be found in the dict returned
               by this method under the key "_debug"
         """
-        output = self.pipeline.run(query=query, params=params, debug=debug)
-        return output
+        return self.pipeline.run(query=query, params=params, debug=debug)
 
 
 class SearchSummarizationPipeline(BaseStandardPipeline):
@@ -354,8 +349,7 @@ class FAQPipeline(BaseStandardPipeline):
               All debug information can then be found in the dict returned
               by this method under the key "_debug"
         """
-        output = self.pipeline.run(query=query, params=params, debug=debug)
-        return output
+        return self.pipeline.run(query=query, params=params, debug=debug)
 
 
 class TranslationWrapperPipeline(BaseStandardPipeline):
@@ -396,8 +390,7 @@ class TranslationWrapperPipeline(BaseStandardPipeline):
         self.pipeline.add_node(component=output_translator, name="OutputTranslator", inputs=previous_node_name)
 
     def run(self, **kwargs):
-        output = self.pipeline.run(**kwargs)
-        return output
+        return self.pipeline.run(**kwargs)
 
 
 class QuestionGenerationPipeline(BaseStandardPipeline):
@@ -411,8 +404,7 @@ class QuestionGenerationPipeline(BaseStandardPipeline):
         self.pipeline.add_node(component=question_generator, name="QuestionGenerator", inputs=["Query"])
 
     def run(self, documents, params: Optional[dict] = None, debug: Optional[bool] = None):
-        output = self.pipeline.run(documents=documents, params=params, debug=debug)
-        return output
+        return self.pipeline.run(documents=documents, params=params, debug=debug)
 
 
 class RetrieverQuestionGenerationPipeline(BaseStandardPipeline):
@@ -427,8 +419,7 @@ class RetrieverQuestionGenerationPipeline(BaseStandardPipeline):
         self.pipeline.add_node(component=question_generator, name="Question Generator", inputs=["Retriever"])
 
     def run(self, query: str, params: Optional[dict] = None, debug: Optional[bool] = None):
-        output = self.pipeline.run(query=query, params=params, debug=debug)
-        return output
+        return self.pipeline.run(query=query, params=params, debug=debug)
 
 
 class QuestionAnswerGenerationPipeline(BaseStandardPipeline):
@@ -463,8 +454,7 @@ class QuestionAnswerGenerationPipeline(BaseStandardPipeline):
     def run(
         self, documents: List[Document], params: Optional[dict] = None, debug: Optional[bool] = None  # type: ignore
     ):
-        output = self.pipeline.run(documents=documents, params=params, debug=debug)
-        return output
+        return self.pipeline.run(documents=documents, params=params, debug=debug)
 
 
 class MostSimilarDocumentsPipeline(BaseStandardPipeline):
@@ -482,15 +472,15 @@ class MostSimilarDocumentsPipeline(BaseStandardPipeline):
         :param document_ids: document ids
         :param top_k: How many documents id to return against single document
         """
-        similar_documents: list = []
         self.document_store.return_embedding = True  # type: ignore
 
-        for document in self.document_store.get_documents_by_id(ids=document_ids):
-            similar_documents.append(
-                self.document_store.query_by_embedding(
-                    query_emb=document.embedding, return_embedding=False, top_k=top_k
-                )
+        similar_documents: list = [
+            self.document_store.query_by_embedding(
+                query_emb=document.embedding, return_embedding=False, top_k=top_k
             )
-
+            for document in self.document_store.get_documents_by_id(
+                ids=document_ids
+            )
+        ]
         self.document_store.return_embedding = False  # type: ignore
         return similar_documents

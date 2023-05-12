@@ -80,8 +80,7 @@ class SquadData:
         df_docs = self.df[["title", "context"]]
         df_docs = df_docs.drop_duplicates()
         record_dicts = df_docs.to_dict("records")
-        documents = [Document(content=rd["context"], id=rd["title"]) for rd in record_dicts]
-        return documents
+        return [Document(content=rd["context"], id=rd["title"]) for rd in record_dicts]
 
     # FIXME currently broken! Refactor to new Label objects
     def to_label_objs(self):
@@ -90,7 +89,7 @@ class SquadData:
         """
         df_labels = self.df[["id", "question", "answer_text", "answer_start"]]
         record_dicts = df_labels.to_dict("records")
-        labels = [
+        return [
             Label(  # pylint: disable=no-value-for-parameter
                 query=rd["question"],
                 answer=rd["answer_text"],
@@ -102,7 +101,6 @@ class SquadData:
             )
             for rd in record_dicts
         ]
-        return labels
 
     @staticmethod
     def to_df(data):
@@ -145,8 +143,7 @@ class SquadData:
                                     "is_impossible": is_impossible,
                                 }
                             )
-        df = pd.DataFrame.from_records(flat)
-        return df
+        return pd.DataFrame.from_records(flat)
 
     def count(self, unit="questions"):
         """
@@ -164,9 +161,8 @@ class SquadData:
                     if len(question["answers"]) == 0:
                         if unit in ["answers", "no_answers"]:
                             c += 1
-                    # Count span answers
                     else:
-                        for answer in question["answers"]:
+                        for _ in question["answers"]:
                             if unit in ["answers", "span_answers"]:
                                 c += 1
         return c
@@ -204,21 +200,17 @@ class SquadData:
         df_aggregated_paragraphs = pd.merge(df_aggregated_paragraphs, paragraphs)
 
         df_aggregated_paragraphs = df_aggregated_paragraphs[["title", "paragraphs"]]
-        ret = df_aggregated_paragraphs.to_dict("records")
-
-        return ret
+        return df_aggregated_paragraphs.to_dict("records")
 
     @staticmethod
     def _aggregate_passages(x):
         x = x[["context", "qas"]]
-        ret = x.to_dict("records")
-        return ret
+        return x.to_dict("records")
 
     @staticmethod
     def _aggregate_questions(x):
         x = x[["question", "id", "answers", "is_impossible"]]
-        ret = x.to_dict("records")
-        return ret
+        return x.to_dict("records")
 
     @staticmethod
     def _aggregate_answers(x):
@@ -261,8 +253,7 @@ class SquadData:
         """
         df_questions = self.df[["title", "context", "question"]]
         df_questions = df_questions.drop_duplicates()
-        questions = df_questions["question"].tolist()
-        return questions
+        return df_questions["question"].tolist()
 
     def get_all_document_titles(self):
         """Return all document title strings"""

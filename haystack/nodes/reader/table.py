@@ -182,9 +182,7 @@ class TableReader(BaseReader):
         answers = sorted(answers, reverse=True)
         answers = answers[:top_k]
 
-        results = {"query": query, "answers": answers}
-
-        return results
+        return {"query": query, "answers": answers}
 
     def _predict_tapas_for_qa(self, inputs: BatchEncoding, document: Document) -> Answer:
         table: pd.DataFrame = document.content
@@ -207,10 +205,9 @@ class TableReader(BaseReader):
 
         # Get cell values
         current_answer_coordinates = predicted_answer_coordinates[0]
-        current_answer_cells = []
-        for coordinate in current_answer_coordinates:
-            current_answer_cells.append(table.iat[coordinate])
-
+        current_answer_cells = [
+            table.iat[coordinate] for coordinate in current_answer_coordinates
+        ]
         # Get aggregation operator
         if self.model.config.aggregation_labels is not None:
             current_aggregation_operator = self.model.config.aggregation_labels[predicted_aggregation_indices[0]]
@@ -227,7 +224,7 @@ class TableReader(BaseReader):
 
         answer_offsets = self._calculate_answer_offsets(current_answer_coordinates, document.content)
 
-        answer = Answer(
+        return Answer(
             answer=answer_str,
             type="extractive",
             score=current_score,
@@ -235,10 +232,11 @@ class TableReader(BaseReader):
             offsets_in_document=answer_offsets,
             offsets_in_context=answer_offsets,
             document_id=document.id,
-            meta={"aggregation_operator": current_aggregation_operator, "answer_cells": current_answer_cells},
+            meta={
+                "aggregation_operator": current_aggregation_operator,
+                "answer_cells": current_answer_cells,
+            },
         )
-
-        return answer
 
     def _predict_tapas_for_scored_qa(self, inputs: BatchEncoding, document: Document) -> Tuple[List[Answer], float]:
         table: pd.DataFrame = document.content
@@ -360,7 +358,7 @@ class TableReader(BaseReader):
         if len(answer_cells) == 1:
             return answer_cells[0]
         # Return empty string if model did not select any cell as answer
-        if len(answer_cells) == 0:
+        if not answer_cells:
             return ""
 
         # Parse answer cells in order to aggregate numerical values
@@ -373,19 +371,17 @@ class TableReader(BaseReader):
                 numerical_values = [cell[0].value for cell in parsed_answer_cells]
                 unit = parsed_answer_cells[0][0].unit.symbols[0] if parsed_answer_cells[0][0].unit.symbols else ""
 
-                if agg_operator == "SUM":
-                    answer_value = sum(numerical_values)
-                elif agg_operator == "AVERAGE":
+                if agg_operator == "AVERAGE":
                     answer_value = mean(numerical_values)
+                elif agg_operator == "SUM":
+                    answer_value = sum(numerical_values)
                 else:
                     raise KeyError("unknown aggregator")
 
             return f"{answer_value}{' ' + unit if unit else ''}"
 
         except KeyError as e:
-            if "unknown aggregator" in str(e):
-                pass
-
+            pass
         # Not all selected answer cells contain a numerical value or answer cells don't share the same unit
         return f"{agg_operator} > {', '.join(answer_cells)}"
 
@@ -610,9 +606,7 @@ class RCIReader(BaseReader):
         answers = sorted(answers, reverse=True)
         answers = answers[:top_k]
 
-        results = {"query": query, "answers": answers}
-
-        return results
+        return {"query": query, "answers": answers}
 
     @staticmethod
     def _create_row_column_representations(table: pd.DataFrame) -> Tuple[List[str], List[str]]:

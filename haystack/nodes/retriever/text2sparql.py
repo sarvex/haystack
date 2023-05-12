@@ -56,11 +56,10 @@ class Text2SparqlRetriever(BaseGraphRetriever):
                 answers.append((ans, query))
 
         # if there are no answers we still want to return something
-        if len(answers) == 0:
+        if not answers:
             answers.append(("", ""))
         results = answers[: self.top_k]
-        results = [self.format_result(result) for result in results]
-        return results
+        return [self.format_result(result) for result in results]
 
     def _query_kg(self, sparql_query):
         """
@@ -73,21 +72,22 @@ class Text2SparqlRetriever(BaseGraphRetriever):
             response = self.knowledge_graph.query(sparql_query=sparql_query)
 
             # unpack different answer styles
-            if isinstance(response, list):
-                if len(response) == 0:
-                    result = ""
-                else:
-                    result = []
-                    for x in response:
-                        for k, v in x.items():
-                            result.append(v["value"])
+            if (
+                isinstance(response, list)
+                and len(response) == 0
+                or not isinstance(response, list)
+                and not isinstance(response, bool)
+                and "count" not in response[0]
+            ):
+                result = ""
+            elif isinstance(response, list):
+                result = []
+                for x in response:
+                    result.extend(v["value"] for k, v in x.items())
             elif isinstance(response, bool):
                 result = str(response)
-            elif "count" in response[0]:
-                result = str(int(response[0]["count"]["value"]))
             else:
-                result = ""
-
+                result = str(int(response[0]["count"]["value"]))
         except Exception:
             result = ""
 

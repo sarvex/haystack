@@ -34,8 +34,8 @@ def test_no_answer_output(no_answer_prediction):
     assert no_answer_prediction["answers"][0].offsets_in_context[0].end == 0
     assert no_answer_prediction["answers"][0].score <= 1
     assert no_answer_prediction["answers"][0].score >= 0
-    assert no_answer_prediction["answers"][0].context == None
-    assert no_answer_prediction["answers"][0].document_id == None
+    assert no_answer_prediction["answers"][0].context is None
+    assert no_answer_prediction["answers"][0].document_id is None
     answers = [x.answer for x in no_answer_prediction["answers"]]
     assert answers.count("") == 1
     assert len(no_answer_prediction["answers"]) == 5

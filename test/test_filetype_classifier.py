@@ -34,16 +34,16 @@ def test_filetype_classifier_many_files_mixed_extensions(tmpdir):
 
 def test_filetype_classifier_unsupported_extension(tmpdir):
     node = FileTypeClassifier()
-    test_file = tmpdir / f"test.really_weird_extension"
+    test_file = tmpdir / "test.really_weird_extension"
     with pytest.raises(ValueError):
         node.run(test_file)
 
 
 def test_filetype_classifier_custom_extensions(tmpdir):
     node = FileTypeClassifier(supported_types=["my_extension"])
-    test_file = tmpdir / f"test.my_extension"
+    test_file = tmpdir / "test.my_extension"
     output, edge = node.run(test_file)
-    assert edge == f"output_1"
+    assert edge == "output_1"
     assert output == {"file_paths": [test_file]}
 
 
@@ -54,4 +54,4 @@ def test_filetype_classifier_too_many_custom_extensions():
 
 def test_filetype_classifier_duplicate_custom_extensions():
     with pytest.raises(ValueError):
-        FileTypeClassifier(supported_types=[f"my_extension", "my_extension"])
+        FileTypeClassifier(supported_types=["my_extension", "my_extension"])

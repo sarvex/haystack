@@ -23,7 +23,4 @@ def clean_wiki_text(text: str) -> str:
     # add paragraphs (identified by wiki section title which is always in format "==Some Title==")
     text = text.replace("\n==", "\n\n\n==")
 
-    # remove empty paragrahps
-    text = re.sub(r"(==.*==\n\n\n)", "", text)
-
-    return text
+    return re.sub(r"(==.*==\n\n\n)", "", text)

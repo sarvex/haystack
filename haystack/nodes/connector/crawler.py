@@ -12,7 +12,7 @@ from haystack.nodes.base import BaseComponent
 try:
     from webdriver_manager.chrome import ChromeDriverManager
     from selenium import webdriver
-except (ImportError, ModuleNotFoundError) as ie:
+except ImportError as ie:
     from haystack.utils.import_utils import _optional_component_not_installed
 
     _optional_component_not_installed(__name__, "crawler", ie)
@@ -163,8 +163,7 @@ class Crawler(BaseComponent):
             file_name = f"{'_'.join(link_split_values)}.json"
             file_path = output_dir / file_name
 
-            data = {}
-            data["meta"] = {"url": link}
+            data = {"meta": {"url": link}}
             if base_url:
                 data["meta"]["base_url"] = base_url
             data["content"] = text
@@ -235,21 +234,28 @@ class Crawler(BaseComponent):
         self.driver.get(base_url)
         a_elements = self.driver.find_elements_by_tag_name("a")
         sub_links = set()
-        if not (existed_links and base_url in existed_links):
-            if filter_urls:
-                if re.compile("|".join(filter_urls)).search(base_url):
-                    sub_links.add(base_url)
+        if (
+            not (existed_links and base_url in existed_links)
+            and filter_urls
+            and re.compile("|".join(filter_urls)).search(base_url)
+        ):
+            sub_links.add(base_url)
 
         for i in a_elements:
             sub_link = i.get_attribute("href")
-            if not (existed_links and sub_link in existed_links):
-                if self._is_internal_url(base_url=base_url, sub_link=sub_link) and (
-                    not self._is_inpage_navigation(base_url=base_url, sub_link=sub_link)
-                ):
-                    if filter_urls:
-                        if re.compile("|".join(filter_urls)).search(sub_link):
-                            sub_links.add(sub_link)
-                    else:
+            if (
+                not (existed_links and sub_link in existed_links)
+                and self._is_internal_url(base_url=base_url, sub_link=sub_link)
+                and (
+                    not self._is_inpage_navigation(
+                        base_url=base_url, sub_link=sub_link
+                    )
+                )
+            ):
+                if filter_urls:
+                    if re.compile("|".join(filter_urls)).search(sub_link):
                         sub_links.add(sub_link)
+                else:
+                    sub_links.add(sub_link)
 
         return sub_links

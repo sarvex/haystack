@@ -50,11 +50,11 @@ class BaseAdaptiveModel:
         :param kwargs: Arguments to pass for loading the model.
         :return: Instance of a model.
         """
-        if (Path(kwargs["load_dir"]) / "model.onnx").is_file():
-            model = cls.subclasses["ONNXAdaptiveModel"].load(**kwargs)
-        else:
-            model = cls.subclasses["AdaptiveModel"].load(**kwargs)
-        return model
+        return (
+            cls.subclasses["ONNXAdaptiveModel"].load(**kwargs)
+            if (Path(kwargs["load_dir"]) / "model.onnx").is_file()
+            else cls.subclasses["AdaptiveModel"].load(**kwargs)
+        )
 
     def logits_to_preds(self, logits: torch.Tensor, **kwargs):
         """
@@ -84,7 +84,6 @@ class BaseAdaptiveModel:
             preds_final = self.language_model.formatted_preds(logits=logits, **kwargs)
 
         elif n_heads == 1:
-            preds_final = []
             # This try catch is to deal with the fact that sometimes we collect preds before passing it to
             # formatted_preds (see Inferencer._get_predictions_and_aggregate()) and sometimes we don't
             # (see Inferencer._get_predictions())
@@ -98,6 +97,7 @@ class BaseAdaptiveModel:
             head = self.prediction_heads[0]
             logits_for_head = logits[0]
             preds = head.formatted_preds(logits=logits_for_head, **kwargs)
+            preds_final = []
             # TODO This is very messy - we need better definition of what the output should look like
             if type(preds) == list:
                 preds_final += preds
@@ -334,10 +334,9 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         :return: torch.tensor that is the per sample loss (len: batch_size)
         """
         all_losses = self.logits_to_loss_per_head(logits, **kwargs)
-        # This aggregates the loss per sample across multiple prediction heads
-        # Default is sum(), but you can configure any fn that takes [Tensor, Tensor ...] and returns [Tensor]
-        loss = self.loss_aggregation_fn(all_losses, global_step=global_step, batch=kwargs)
-        return loss
+        return self.loss_aggregation_fn(
+            all_losses, global_step=global_step, batch=kwargs
+        )
 
     def prepare_labels(self, **kwargs):
         """
@@ -376,26 +375,25 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
                 sequence_output, pooled_output, hidden_states, attentions = output_tuple
             else:
                 sequence_output, pooled_output, hidden_states = output_tuple
+        elif output_attentions:
+            sequence_output, pooled_output, attentions = output_tuple
         else:
-            if output_attentions:
-                sequence_output, pooled_output, attentions = output_tuple
-            else:
-                sequence_output, pooled_output = output_tuple
+            sequence_output, pooled_output = output_tuple
         # Run forward pass of (multiple) prediction heads using the output from above
         all_logits = []
         if len(self.prediction_heads) > 0:
             for head, lm_out in zip(self.prediction_heads, self.lm_output_types):
                 # Choose relevant vectors from LM as output and perform dropout
-                if lm_out == "per_token":
+                if (
+                    lm_out == "per_token"
+                    or lm_out not in ["per_sequence", "per_sequence_continuous"]
+                    and (lm_out == "per_token_squad")
+                ):
                     output = self.dropout(sequence_output)
-                elif lm_out == "per_sequence" or lm_out == "per_sequence_continuous":
+                elif lm_out in ["per_sequence", "per_sequence_continuous"]:
                     output = self.dropout(pooled_output)
-                elif (
-                    lm_out == "per_token_squad"
-                ):  # we need a per_token_squad because of variable metric computation later on...
-                    output = self.dropout(sequence_output)
                 else:
-                    raise ValueError("Unknown extraction strategy from language model: {}".format(lm_out))
+                    raise ValueError(f"Unknown extraction strategy from language model: {lm_out}")
 
                 # Do the actual forward pass of a single head
                 all_logits.append(head(output))
@@ -564,7 +562,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             model=model_name,
             output=output_path / "model.onnx",
             opset=opset_version,
-            use_external_format=True if language_model_class == "XLMRoberta" else False,
+            use_external_format=language_model_class == "XLMRoberta",
         )
 
         # save processor & model config files that are needed when loading the model with the Haystack.basics Inferencer
@@ -632,7 +630,7 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
 
         super().__init__(prediction_heads)
 
-        if str(device) == "cuda" and onnxruntime.get_device() != "GPU":
+        if device == "cuda" and onnxruntime.get_device() != "GPU":
             raise Exception(
                 f"Device {device} not available for Inference. For CPU, run pip install onnxruntime and"
                 f"for GPU run pip install onnxruntime-gpu"

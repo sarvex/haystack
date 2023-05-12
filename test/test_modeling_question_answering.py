@@ -17,8 +17,7 @@ def span_inference_result(bert_base_squad2, caplog=None):
             questions=Question("Who counted the game among the best ever made?", uid="best_id_ever"),
         )
     ]
-    result = bert_base_squad2.inference_from_objects(obj_input, return_json=False)[0]
-    return result
+    return bert_base_squad2.inference_from_objects(obj_input, return_json=False)[0]
 
 
 @pytest.fixture()
@@ -33,8 +32,7 @@ def no_answer_inference_result(bert_base_squad2, caplog=None):
             ),
         )
     ]
-    result = bert_base_squad2.inference_from_objects(obj_input, return_json=False)[0]
-    return result
+    return bert_base_squad2.inference_from_objects(obj_input, return_json=False)[0]
 
 
 def test_inference_different_inputs(bert_base_squad2):
@@ -68,8 +66,8 @@ def test_span_inference_result_ranking_by_confidence(bert_base_squad2, caplog=No
 
     # by default, result is sorted by score and not by confidence
     assert all(result.prediction[i].score >= result.prediction[i + 1].score for i in range(len(result.prediction) - 1))
-    assert not all(
-        result.prediction[i].confidence >= result.prediction[i + 1].confidence
+    assert any(
+        result.prediction[i].confidence < result.prediction[i + 1].confidence
         for i in range(len(result.prediction) - 1)
     )
 
@@ -80,8 +78,9 @@ def test_span_inference_result_ranking_by_confidence(bert_base_squad2, caplog=No
         result_ranked_by_confidence.prediction[i].confidence >= result_ranked_by_confidence.prediction[i + 1].confidence
         for i in range(len(result_ranked_by_confidence.prediction) - 1)
     )
-    assert not all(
-        result_ranked_by_confidence.prediction[i].score >= result_ranked_by_confidence.prediction[i + 1].score
+    assert any(
+        result_ranked_by_confidence.prediction[i].score
+        < result_ranked_by_confidence.prediction[i + 1].score
         for i in range(len(result_ranked_by_confidence.prediction) - 1)
     )
 

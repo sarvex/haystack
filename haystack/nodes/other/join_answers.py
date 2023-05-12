@@ -21,7 +21,10 @@ class JoinAnswers(BaseComponent):
         :param top_k_join: Limit `Answer`s to top_k based on the resulting scored of the join.
         """
 
-        assert join_mode in ["concatenate", "merge"], f"JoinAnswers node does not support '{join_mode}' join_mode."
+        assert join_mode in {
+            "concatenate",
+            "merge",
+        }, f"JoinAnswers node does not support '{join_mode}' join_mode."
         assert not (
             weights is not None and join_mode == "concatenate"
         ), "Weights are not compatible with 'concatenate' join_mode"

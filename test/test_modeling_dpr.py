@@ -79,7 +79,10 @@ def test_dpr_modules(caplog=None):
     assert type(passage_language_model) == DPRContextEncoder
 
     # check embedding layer weights
-    assert list(model.named_parameters())[0][1][0, 0].item() - -0.010200000368058681 < 0.0001
+    assert (
+        list(model.named_parameters())[0][1][0, 0].item()
+        > -0.010100000368058682
+    )
 
     d = {
         "query": "big little lies season 2 how many episodes",
@@ -167,7 +170,7 @@ def test_dpr_modules(caplog=None):
     assert torch.all(
         torch.le(similarity_scores - torch.tensor([[-1.8311e-03, -6.3016e00]]), torch.ones((1, 2)) * 0.0001)
     )
-    assert (loss[0].item() - 0.0018) <= 0.0001
+    assert loss[0].item() <= 0.0019
 
 
 query_input_ids = [

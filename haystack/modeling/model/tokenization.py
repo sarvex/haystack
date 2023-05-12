@@ -210,33 +210,26 @@ class Tokenizer:
             # Haystack model (no 'config.json' file)
             try:
                 config = AutoConfig.from_pretrained(
-                    pretrained_model_name_or_path + "/language_model_config.json", use_auth_token=use_auth_token
+                    f"{pretrained_model_name_or_path}/language_model_config.json",
+                    use_auth_token=use_auth_token,
                 )
             except Exception as e:
                 logger.warning("No config file found. Trying to infer Tokenizer type from model name")
-                tokenizer_class = Tokenizer._infer_tokenizer_class_from_string(pretrained_model_name_or_path)
-                return tokenizer_class
-
+                return Tokenizer._infer_tokenizer_class_from_string(
+                    pretrained_model_name_or_path
+                )
         model_type = config.model_type
 
-        if model_type == "xlm-roberta":
-            tokenizer_class = "XLMRobertaTokenizer"
-        elif model_type == "roberta":
-            if "mlm" in pretrained_model_name_or_path.lower():
-                raise NotImplementedError("MLM part of codebert is currently not supported in Haystack")
-            tokenizer_class = "RobertaTokenizer"
-        elif model_type == "camembert":
-            tokenizer_class = "CamembertTokenizer"
-        elif model_type == "albert":
+        if model_type == "albert":
             tokenizer_class = "AlbertTokenizer"
-        elif model_type == "distilbert":
-            tokenizer_class = "DistilBertTokenizer"
         elif model_type == "bert":
             tokenizer_class = "BertTokenizer"
-        elif model_type == "xlnet":
-            tokenizer_class = "XLNetTokenizer"
-        elif model_type == "electra":
-            tokenizer_class = "ElectraTokenizer"
+        elif model_type == "big_bird":
+            tokenizer_class = "BigBirdTokenizer"
+        elif model_type == "camembert":
+            tokenizer_class = "CamembertTokenizer"
+        elif model_type == "distilbert":
+            tokenizer_class = "DistilBertTokenizer"
         elif model_type == "dpr":
             if config.architectures[0] == "DPRQuestionEncoder":
                 tokenizer_class = "DPRQuestionEncoderTokenizer"
@@ -244,8 +237,16 @@ class Tokenizer:
                 tokenizer_class = "DPRContextEncoderTokenizer"
             elif config.architectures[0] == "DPRReader":
                 raise NotImplementedError("DPRReader models are currently not supported.")
-        elif model_type == "big_bird":
-            tokenizer_class = "BigBirdTokenizer"
+        elif model_type == "electra":
+            tokenizer_class = "ElectraTokenizer"
+        elif model_type == "roberta":
+            if "mlm" in pretrained_model_name_or_path.lower():
+                raise NotImplementedError("MLM part of codebert is currently not supported in Haystack")
+            tokenizer_class = "RobertaTokenizer"
+        elif model_type == "xlm-roberta":
+            tokenizer_class = "XLMRobertaTokenizer"
+        elif model_type == "xlnet":
+            tokenizer_class = "XLNetTokenizer"
         else:
             # Fall back to inferring type from model name
             logger.warning(
@@ -328,13 +329,13 @@ def tokenize_batch_question_answering(pre_baskets, tokenizer, indices):
 
     # Extract relevant data
     tokenids_batch = tokenized_docs_batch["input_ids"]
-    offsets_batch = []
-    for o in tokenized_docs_batch["offset_mapping"]:
-        offsets_batch.append(np.array([x[0] for x in o]))
-    start_of_words_batch = []
-    for e in tokenized_docs_batch.encodings:
-        start_of_words_batch.append(_get_start_of_word_QA(e.words))
-
+    offsets_batch = [
+        np.array([x[0] for x in o])
+        for o in tokenized_docs_batch["offset_mapping"]
+    ]
+    start_of_words_batch = [
+        _get_start_of_word_QA(e.words) for e in tokenized_docs_batch.encodings
+    ]
     for i_doc, d in enumerate(pre_baskets):
         document_text = d["context"]
         # # Tokenize questions one by one
@@ -362,19 +363,18 @@ def tokenize_batch_question_answering(pre_baskets, tokenizer, indices):
                 "question_offsets": question_offsets,
                 "question_start_of_word": question_sow,
                 "answers": q["answers"],
+                "document_tokens_strings": tokenized_docs_batch.encodings[
+                    i_doc
+                ].tokens,
+                "question_tokens_strings": tokenized_q.encodings[0].tokens,
             }
-            # TODO add only during debug mode (need to create debug mode)
-            raw["document_tokens_strings"] = tokenized_docs_batch.encodings[i_doc].tokens
-            raw["question_tokens_strings"] = tokenized_q.encodings[0].tokens
-
             baskets.append(SampleBasket(raw=raw, id_internal=internal_id, id_external=external_id, samples=None))
     return baskets
 
 
 def _get_start_of_word_QA(word_ids):
     words = np.array(word_ids)
-    start_of_word_single = [1] + list(np.ediff1d(words))
-    return start_of_word_single
+    return [1] + list(np.ediff1d(words))
 
 
 def tokenize_with_metadata(text: str, tokenizer) -> Dict[str, Any]:
@@ -426,20 +426,23 @@ def tokenize_with_metadata(text: str, tokenizer) -> Dict[str, Any]:
         #         start_of_word3.append(1)
         #         last_word = word_id
 
-        tokenized_dict = {"tokens": tokens2, "offsets": offsets2, "start_of_word": start_of_word2}
+        return {
+            "tokens": tokens2,
+            "offsets": offsets2,
+            "start_of_word": start_of_word2,
+        }
     else:
         # split text into "words" (here: simple whitespace tokenizer).
         words = text.split(" ")
         word_offsets = []
         cumulated = 0
-        for idx, word in enumerate(words):
+        for word in words:
             word_offsets.append(cumulated)
             cumulated += len(word) + 1  # 1 because we so far have whitespace tokenizer
 
         # split "words" into "subword tokens"
         tokens, offsets, start_of_word = _words_to_tokens(words, word_offsets, tokenizer)
-        tokenized_dict = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
-    return tokenized_dict
+        return {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
 
 
 def truncate_sequences(
@@ -516,13 +519,10 @@ def _words_to_tokens(words, word_offsets, tokenizer):
         # For the first word of a text: we just call the regular tokenize function.
         # For later words: we need to call it with add_prefix_space=True to get the same results with roberta / gpt2 tokenizer
         # see discussion here. https://github.com/huggingface/transformers/issues/1196
-        if len(tokens) == 0:
-            tokens_word = tokenizer.tokenize(w)
+        if len(tokens) != 0 and type(tokenizer) == RobertaTokenizer:
+            tokens_word = tokenizer.tokenize(w, add_prefix_space=True)
         else:
-            if type(tokenizer) == RobertaTokenizer:
-                tokens_word = tokenizer.tokenize(w, add_prefix_space=True)
-            else:
-                tokens_word = tokenizer.tokenize(w)
+            tokens_word = tokenizer.tokenize(w)
         # Sometimes the tokenizer returns no tokens
         if len(tokens_word) == 0:
             continue

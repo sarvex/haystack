@@ -10,7 +10,7 @@ except ImportError:
 import requests
 import yaml
 
-DEFAULT_API_ENDPOINT = f"DC_API_PLACEHOLDER/v1"  # TODO
+DEFAULT_API_ENDPOINT = "DC_API_PLACEHOLDER/v1"
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class BearerAuth(requests.auth.AuthBase):
         self.token = token
 
     def __call__(self, r):
-        r.headers["authorization"] = "Bearer " + self.token
+        r.headers["authorization"] = f"Bearer {self.token}"
         return r
 
 
@@ -234,8 +234,7 @@ class DeepsetCloudClient:
 
     def build_workspace_url(self, workspace: str = None):
         api_endpoint = f"{self.api_endpoint}".rstrip("/")
-        url = f"{api_endpoint}/workspaces/{workspace}"
-        return url
+        return f"{api_endpoint}/workspaces/{workspace}"
 
     def _remove_null_values(self, body: dict) -> dict:
         return {k: v for k, v in body.items() if v is not None}
@@ -369,8 +368,7 @@ class PipelineClient:
     ) -> dict:
         pipeline_url = self._build_pipeline_url(workspace=workspace, pipeline_config_name=pipeline_config_name)
         pipeline_config_url = f"{pipeline_url}/json"
-        response = self.client.get(url=pipeline_config_url, headers=headers).json()
-        return response
+        return self.client.get(url=pipeline_config_url, headers=headers).json()
 
     def get_pipeline_config_info(
         self, workspace: Optional[str] = None, pipeline_config_name: Optional[str] = None, headers: dict = None
@@ -389,8 +387,7 @@ class PipelineClient:
     def list_pipeline_configs(self, workspace: Optional[str] = None, headers: dict = None) -> Generator:
         workspace_url = self._build_workspace_url(workspace)
         pipelines_url = f"{workspace_url}/pipelines"
-        generator = self.client.get_with_auto_paging(url=pipelines_url, headers=headers)
-        return generator
+        return self.client.get_with_auto_paging(url=pipelines_url, headers=headers)
 
     def save_pipeline_config(
         self, config: dict, pipeline_config_name: str, workspace: Optional[str] = None, headers: dict = None

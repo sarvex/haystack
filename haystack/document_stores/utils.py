@@ -40,9 +40,8 @@ def eval_data_from_json(
             logger.warning(f"No title information found for documents in QA file: {filename}")
 
         for document in data["data"]:
-            if max_docs:
-                if len(docs) > max_docs:
-                    break
+            if max_docs and len(docs) > max_docs:
+                break
             # Extracting paragraphs and their labels from a SQuAD document dict
             cur_docs, cur_labels, cur_problematic_ids = _extract_docs_and_labels_from_dict(
                 document, preprocessor, open_domain
@@ -50,7 +49,7 @@ def eval_data_from_json(
             docs.extend(cur_docs)
             labels.extend(cur_labels)
             problematic_ids.extend(cur_problematic_ids)
-    if len(problematic_ids) > 0:
+    if problematic_ids:
         logger.warning(
             f"Could not convert an answer for {len(problematic_ids)} questions.\n"
             f"There were conversion errors for question ids: {problematic_ids}"
@@ -83,9 +82,8 @@ def eval_data_from_jsonl(
 
     with open(filename, "r", encoding="utf-8") as file:
         for document in file:
-            if max_docs:
-                if len(docs) > max_docs:
-                    break
+            if max_docs and len(docs) > max_docs:
+                break
             # Extracting paragraphs and their labels from a SQuAD document dict
             document_dict = json.loads(document)
             cur_docs, cur_labels, cur_problematic_ids = _extract_docs_and_labels_from_dict(
@@ -95,17 +93,16 @@ def eval_data_from_jsonl(
             labels.extend(cur_labels)
             problematic_ids.extend(cur_problematic_ids)
 
-            if batch_size is not None:
-                if len(docs) >= batch_size:
-                    if len(problematic_ids) > 0:
-                        logger.warning(
-                            f"Could not convert an answer for {len(problematic_ids)} questions.\n"
-                            f"There were conversion errors for question ids: {problematic_ids}"
-                        )
-                    yield docs, labels
-                    docs = []
-                    labels = []
-                    problematic_ids = []
+            if batch_size is not None and len(docs) >= batch_size:
+                if len(problematic_ids) > 0:
+                    logger.warning(
+                        f"Could not convert an answer for {len(problematic_ids)} questions.\n"
+                        f"There were conversion errors for question ids: {problematic_ids}"
+                    )
+                yield docs, labels
+                docs = []
+                labels = []
+                problematic_ids = []
 
     yield docs, labels
 
@@ -142,9 +139,9 @@ def _extract_docs_and_labels_from_dict(
         cur_meta = {"name": document_dict.get("title", None)}
         # all other fields from paragraph level
         meta_paragraph = {k: v for k, v in paragraph.items() if k not in ("qas", "context")}
-        cur_meta.update(meta_paragraph)
+        cur_meta |= meta_paragraph
         # meta from parent document
-        cur_meta.update(meta_doc)
+        cur_meta |= meta_doc
 
         ## Create Document
         cur_full_doc = Document(content=paragraph["context"], meta=cur_meta)
@@ -159,10 +156,10 @@ def _extract_docs_and_labels_from_dict(
                 d["meta"]["_split_offset"] = offset
                 offset += len(d["content"])
                 # offset correction based on splitting method
-                if preprocessor.split_by == "word":
-                    offset += 1
-                elif preprocessor.split_by == "passage":
+                if preprocessor.split_by == "passage":
                     offset += 2
+                elif preprocessor.split_by == "word":
+                    offset += 1
                 else:
                     raise NotImplementedError
                 mydoc = Document(content=d["content"], id=id, meta=d["meta"])
@@ -194,7 +191,6 @@ def _extract_docs_and_labels_from_dict(
                             no_answer=qa.get("is_impossible", False),
                             origin="gold-label",
                         )
-                        labels.append(label)
                     else:
                         ans_position = cur_full_doc.content[answer["answer_start"] : answer["answer_start"] + len(ans)]
                         if ans != ans_position:
@@ -236,7 +232,7 @@ def _extract_docs_and_labels_from_dict(
                             no_answer=qa.get("is_impossible", False),
                             origin="gold-label",
                         )
-                        labels.append(label)
+                    labels.append(label)
             else:
                 # for no_answer we need to assign each split as not fitting to the question
                 for s in splits:
@@ -273,12 +269,11 @@ def convert_date_to_rfc3339(date: str) -> str:
     and filter_utils.py.
     """
     parsed_datetime = datetime.fromisoformat(date)
-    if parsed_datetime.utcoffset() is None:
-        converted_date = parsed_datetime.isoformat() + "Z"
-    else:
-        converted_date = parsed_datetime.isoformat()
-
-    return converted_date
+    return (
+        f"{parsed_datetime.isoformat()}Z"
+        if parsed_datetime.utcoffset() is None
+        else parsed_datetime.isoformat()
+    )
 
 
 def es_index_to_document_store(
@@ -387,14 +382,14 @@ def es_index_to_document_store(
             document_store.write_documents(haystack_documents, index=index)
             haystack_documents = []
 
-        # Get content and metadata of current record
-        content = record["_source"].pop(original_content_field, "")
-        if content:
+        if content := record["_source"].pop(original_content_field, ""):
             record_doc = {"content": content, "meta": {}}
 
-            if original_name_field is not None:
-                if original_name_field in record["_source"]:
-                    record_doc["meta"]["name"] = record["_source"].pop(original_name_field)
+            if (
+                original_name_field is not None
+                and original_name_field in record["_source"]
+            ):
+                record_doc["meta"]["name"] = record["_source"].pop(original_name_field)
             # Only add selected metadata fields
             if included_metadata_fields is not None:
                 for metadata_field in included_metadata_fields:
